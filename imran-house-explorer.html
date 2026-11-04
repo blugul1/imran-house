@@ -2405,5 +2405,110 @@ function checksUI(){
   b.onclick = () => { p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
 }
 checksUI();
+
+// ================= Explorer v11 — Trade Layers (Lesson 7, concept scale) =================
+// One model, trade-owned views. STRUCTURE isolates the frame categories the
+// model truly carries. PLUMBING overlays the wet rooms + the four stack lines
+// derived from the model's own bath positions — labelled conceptual, never a
+// plumbing drawing. ELECTRICAL is honestly not offered as a layer: switches and
+// wiring are not objects in this concept model.
+const LAY = { mode:null, overlay:null };
+function layerStructureVis(){
+  for(const fk of ['basement','ground','first']){
+    FG[fk].visible = true;
+    FURNG[fk].visible = false;
+    if(DOORG[fk]) DOORG[fk].forEach(d => d.visible = false);
+    const C = STAGE.cats[fk];
+    C.slab.forEach(m => m.visible = true);
+    C.stair.forEach(m => m.visible = true);
+    C.wall.forEach(m => m.visible = true);
+    STAGE.plateWet[fk].forEach(m => m.visible = false);
+    STAGE.plateRoom[fk].forEach(m => m.visible = false);
+  }
+  if(SITE) SITE.visible = true;
+  if(ROOFG) ROOFG.visible = true;
+  if(FINSG) FINSG.visible = true;
+}
+function layerBuildOverlay(){
+  const g = new THREE.Group();
+  const BM = MT(0x2f7fd0, 0.30), LM = MT(0x2f7fd0, 0.55);
+  for(const r of ROOMS){
+    if(r.r[6] !== 'kitchen' && r.r[6] !== 'bath') continue;
+    const b = box(g, (r.R.x0 + r.R.x1) / 2, BASE[r.fk] + FH[r.fk] / 2, (r.R.z0 + r.R.z1) / 2, (r.R.x1 - r.R.x0), FH[r.fk] - 0.6, (r.R.z1 - r.R.z0), BM);
+    b.userData.layerBox = 1;
+  }
+  // stack lines: cluster baths by half + centre-x (the model's own wet alignment)
+  const clusters = {};
+  for(const r of ROOMS){
+    if(r.r[6] !== 'bath') continue;
+    const key = r.half + '|' + Math.round((r.R.x0 + r.R.x1) / 2);
+    clusters[key] = clusters[key] || { x: (r.R.x0 + r.R.x1) / 2, z: (r.R.z0 + r.R.z1) / 2, n: 0 };
+    clusters[key].n++;
+  }
+  for(const k of Object.keys(clusters)){
+    const c = clusters[k];
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 40, 10), LM);
+    cyl.position.set(c.x, 19.5, c.z);
+    g.add(cyl);
+  }
+  g.visible = false;
+  scene.add(g);
+  return g;
+}
+const _applyVisL = applyVisibility;
+applyVisibility = function(){
+  if(LAY.mode === 'structure' && !STAGE.on){ layerStructureVis(); return; }
+  _applyVisL();
+};
+function layerRestoreGroups(){
+  for(const fk of ['basement','ground','first']){
+    FURNG[fk].visible = floorVisible(fk);
+    if(DOORG[fk]) DOORG[fk].forEach(d => d.visible = floorVisible(fk));
+    STAGE.plateWet[fk].forEach(m => m.visible = true);
+    STAGE.plateRoom[fk].forEach(m => m.visible = true);
+  }
+}
+function layerSet(mode){
+  if(mode && STAGE.on){ toast('تہیں دیکھنے کے لیے پہلے مراحل والا منظر بند کریں'); return; }
+  if(mode !== 'structure') layerRestoreGroups();
+  LAY.mode = mode;
+  if(!LAY.overlay) LAY.overlay = layerBuildOverlay();
+  LAY.overlay.visible = (mode === 'plumbing');
+  if(mode === 'structure') layerStructureVis();
+  else applyVisibility();
+  const st = document.getElementById('layerStatus');
+  if(st) st.textContent = mode === 'structure' ? 'ڈھانچہ نظر آ رہا ہے — سلیب، دیواریں و سیڑھیاں؛ باقی سب چھپا دیا۔'
+    : mode === 'plumbing' ? 'نیلا رنگ = گیلے کمرے؛ نیلی لائنیں ان کی عمودی (اسٹیک) لائنیں ہیں، ماڈل کی پوزیشن سے اخذ — یہ پلمبنگ ڈرائنگ نہیں۔'
+    : '';
+}
+const _stageModeL = stageMode;
+stageMode = function(on){ if(on) layerSet(null); _stageModeL(on); };
+function layerUI(){
+  const b = document.createElement('button');
+  b.id = 'layBtn'; b.textContent = '🧱 تہیں · Layers';
+  const cb = $('chkBtn');
+  if(cb){ b.className = cb.className; cb.parentNode.insertBefore(b, cb.nextSibling); }
+  const p = document.createElement('div');
+  p.id = 'layPanel';
+  p.style.cssText = 'display:none;position:fixed;top:86px;inset-inline-start:12px;z-index:60;width:290px;max-width:86vw;background:rgba(10,26,59,.97);border:1.5px solid #3DAB94;border-radius:16px;padding:12px 14px;color:#F4F1EA;box-shadow:0 14px 34px rgba(0,0,0,.5)';
+  p.innerHTML =
+    '<div style="font-size:16.5px;line-height:2">🧱 کام کی تہیں</div>' +
+    '<div style="font-size:12.5px;line-height:2;color:#A9B8CC">ہر کاریگر کا کام الگ دیکھیں — تصادم یہیں پکڑا جاتا ہے۔</div>' +
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' +
+      '<button id="layStruct" style="flex:1;font-family:inherit;font-size:13.5px;line-height:2.1;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer">ڈھانچہ</button>' +
+      '<button id="layPlumb" style="flex:1;font-family:inherit;font-size:13.5px;line-height:2.1;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer">پانی و نکاسی</button>' +
+      '<button id="layOff" style="flex:1;font-family:inherit;font-size:13.5px;line-height:2.1;border-radius:10px;background:#3DAB94;color:#04231b;border:none;cursor:pointer">عام منظر</button>' +
+    '</div>' +
+    '<div id="layerStatus" style="font-size:12.5px;line-height:2;color:#C7D2E0;margin-top:6px"></div>' +
+    '<div style="font-size:12px;line-height:2;color:#A9B8CC;border-top:1px solid #2b4d82;margin-top:8px;padding-top:6px">بجلی کی تہہ یہاں نہیں دی گئی — سوئچ و وائرنگ اس تصوراتی ماڈل میں الگ اشیاء نہیں ہیں؛ جھوٹی تہہ بنانا ایمانداری نہیں۔</div>' +
+    '<button id="layClose" style="margin-top:8px;width:100%;font-family:inherit;font-size:14px;line-height:2.1;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer">بند کریں</button>';
+  document.body.appendChild(p);
+  p.querySelector('#layStruct').onclick = () => layerSet('structure');
+  p.querySelector('#layPlumb').onclick = () => layerSet('plumbing');
+  p.querySelector('#layOff').onclick = () => layerSet(null);
+  p.querySelector('#layClose').onclick = () => { p.style.display = 'none'; };
+  b.onclick = () => { p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
+}
+layerUI();
 </script>
 </body></html>
