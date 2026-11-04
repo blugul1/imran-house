@@ -1844,38 +1844,60 @@ window.__EX = { state, setFloor, setMode, showRoute, clearRoute, showStairInspec
   walkTo: (x, z, yaw) => { walk.pos.set(x, walk.pos.y, z); if(yaw !== undefined) walk.yaw = yaw; } };
 window.__ready = true;
 
-// ================= Explorer v10 — Stage Engine (Block A, MVP-1) =================
-// One model, revealed in construction order. The animation never creates a second
-// house: it shows/hides the approved V19 objects by stage. Detail that does not
-// exist in the model is labelled مثالی (SCHEMATIC) in the stage text.
-const STAGE = { on:false, n:1, timer:null, cats:{}, wallMats:{}, coreMats:{}, origWall:0, origCore:0, props:null };
-const BRICK = 0x9e5a38;
+// ================= Explorer v11 — Stage Engine (52 stages) =================
+// One model, revealed in construction order. Every model object is classified
+// ONCE after the build; stageVis(n) only toggles visibility + wall/tread
+// material states. Temporary works (excavation, shuttering) exist for their
+// stage and are removed at the next — built_at / removed_at semantics.
+// Stages whose work has no geometry in a concept model are marked sch:1
+// (SCHEMATIC — مثالی مرحلہ) and say so in their text.
+const STAGE = { on:false, n:1, playing:false, timer:null, cats:{}, wallMats:{}, wallOrig:{}, wallHalf:{}, furnWet:{}, furnRoom:{}, furnAll:[], plateWet:{}, plateRoom:{}, props:null, shut:null, siteLate:[], treadOrig:null, clientItems:[] };
 
 function stageClassify(){
-  STAGE.origWall = WALLM.color.getHex();
-  STAGE.origCore = WALLM_CORE.color.getHex();
   for(const fk of ['basement','ground','first']){
-    STAGE.cats[fk] = { slab:[], plate:[], wall:[], stair:[], door:[], furn:[] };
-    const wm = WALLM.clone(), cm = WALLM_CORE.clone();
-    STAGE.wallMats[fk] = wm; STAGE.coreMats[fk] = cm;
-    for(const ch of FG[fk].children){
-      if(ch === FURNG[fk]){ STAGE.cats[fk].furn.push(ch); continue; }
-      if(ch === DIVOV[fk]){ continue; }
-      if(DOORG[fk] && DOORG[fk].includes(ch)){ STAGE.cats[fk].door.push(ch); continue; }
-      if(ARROWS.includes(ch)){ STAGE.cats[fk].stair.push(ch); continue; }
-      if(ch.isMesh){
-        if(PLATES.includes(ch)){ STAGE.cats[fk].plate.push(ch); }
-        else if(SLABS.includes(ch)){ STAGE.cats[fk].slab.push(ch); }
-        else if(ch.material === TREADM || ch.material === LANDM){ STAGE.cats[fk].stair.push(ch); }
-        else {
-          ch.material = ch.userData.coreWall ? cm : wm;
-          STAGE.cats[fk].wall.push(ch);
-        }
+    const C = { slab:[], stair:[], door:[], wall:[] };
+    const g = FG[fk];
+    for(const ch of g.children){
+      if(ch === FURNG[fk]) continue;
+      if(ch.isGroup && DOORG[fk] && DOORG[fk].includes(ch)){ C.door.push(ch); continue; }
+      if(ch.isMesh && SLABS.includes(ch) && !PLATES.includes(ch)){ C.slab.push(ch); continue; }
+      const meshes = [];
+      ch.traverse ? ch.traverse(o => { if(o.isMesh) meshes.push(o); }) : (ch.isMesh && meshes.push(ch));
+      for(const m of meshes){
+        if(PLATES.includes(m) || SLABS.includes(m)) continue;
+        if(m.material === TREADM || m.material === LANDM || (ch.isGroup && ARROWS.includes(ch))) C.stair.push(m);
+        else C.wall.push(m);
       }
     }
+    STAGE.cats[fk] = C;
+    // walls split by half (north = z<0)
+    STAGE.wallHalf[fk] = { N: C.wall.filter(m => m.position.z < 0), S: C.wall.filter(m => m.position.z >= 0) };
+    // per-floor clones of the true wall materials (brick -> plaster -> paint states)
+    const wm = WALLM.clone(), wc = WALLM_CORE.clone();
+    STAGE.wallMats[fk] = wm; STAGE.wallMats[fk + 'Core'] = wc;
+    STAGE.wallOrig[fk] = WALLM.color.getHex(); STAGE.wallOrig[fk + 'Core'] = WALLM_CORE.color.getHex();
+    for(const m of C.wall){
+      if(m.material === WALLM) m.material = wm;
+      else if(m.material === WALLM_CORE) m.material = wc;
+    }
+    // furnishing meshes by room (geometric) — wet rooms (kitchen/bath) vs the rest
+    const wet = [], room = [];
+    const recs = ROOMS.filter(r => r.fk === fk);
+    for(const ch of FURNG[fk].children){
+      if(!ch.isMesh) continue;
+      const rec = recs.find(r => ch.position.x >= r.R.x0 - 0.3 && ch.position.x <= r.R.x1 + 0.3 && ch.position.z >= r.R.z0 - 0.3 && ch.position.z <= r.R.z1 + 0.3);
+      const t = rec ? rec.r[6] : '';
+      (t === 'kitchen' || t === 'bath' ? wet : room).push(ch);
+      STAGE.furnAll.push(ch);
+    }
+    STAGE.furnWet[fk] = wet; STAGE.furnRoom[fk] = room;
+    // floor plates: wet rooms first, then the rest
+    const pw = [], pr = [];
+    for(const pl of PLATES){ if(pl.userData.room && pl.userData.room.fk === fk){ (pl.userData.room.r[6] === 'kitchen' || pl.userData.room.r[6] === 'bath' ? pw : pr).push(pl); } }
+    STAGE.plateWet[fk] = pw; STAGE.plateRoom[fk] = pr;
   }
-  // late site items: cars, gate leaves, porch canopies + posts — external works, stage 16+
-  STAGE.siteLate = [];
+  STAGE.treadOrig = TREADM.color.getHex();
+  // late site items: cars, gate leaves, porch canopies + posts — external works
   if(SITE){
     for(const gg of GATES) STAGE.siteLate.push(gg);
     for(const ch of SITE.children){
@@ -1888,93 +1910,124 @@ function stageClassify(){
   const pit = box(g, 0, -3.6, 0, 67, 6.6, 51, M(0x4a3826)); pit.userData.prop = 'pit';
   const raft = box(g, 0, -0.24, 0, 64.6, 0.44, 48.6, M(0x9a968c)); raft.userData.prop = 'raft';
   g.visible = false; scene.add(g);
-  STAGE.props = { group:g, pit, raft };
+  STAGE.props = { group: g, pit, raft };
+  // shuttering + props per slab (temporary: one stage only)
+  STAGE.shut = {};
+  const TIM = M(0xa9805a), TIM2 = M(0x8a6844);
+  const mkShut = (slabBase, floorTop) => {
+    const sg = new THREE.Group();
+    box(sg, 0, slabBase - 0.22, 0, 63, 0.4, 47, TIM2);
+    for(let px = -28; px <= 28; px += 8) for(let pz = -20; pz <= 20; pz += 8){
+      if(px > -7 && px < 14 && (pz < -13 || pz > 13)) continue; // keep the stair cores clear
+      box(sg, px, (floorTop + slabBase) / 2 - 0.2, pz, 0.35, slabBase - floorTop - 0.4, 0.35, TIM);
+    }
+    sg.visible = false; scene.add(sg); return sg;
+  };
+  STAGE.shut.ground = mkShut(BASE.ground, 0.37);
+  STAGE.shut.first  = mkShut(BASE.first, BASE.ground + 0.37);
+  STAGE.shut.roof   = mkShut(BASE.first + FH.first, BASE.first + 0.37);
 }
 
 const STAGES = [
-  { t:'پلاٹ و ترسیم', d:'خالی پلاٹ — پیمائش اور نشان دہی مکمل۔ یہی وہ زمین ہے جس پر سارا گھر مرحلہ وار کھڑا ہو گا۔' },
-  { t:'کھدائی', sch:1, d:'تہہ خانے کی کھدائی ہو گئی — مٹی کا گڑھا نظر آ رہا ہے۔ (مثالی منظر: اصل گہرائی سروے سے طے ہو گی)' },
-  { t:'رافٹ بنیاد', sch:1, d:'پورے گھر کے نیچے ایک ہی مضبوط رافٹ سلیب — وزن ساری زمین پر برابر بٹتا ہے۔ (مثالی منظر: سریے کی تفصیل انجینئر کی ڈرائنگ میں)' },
-  { t:'تہہ خانہ: دیواریں کھڑی', d:'تہہ خانے کی اینٹوں کی دیواریں کھڑی ہو گئیں — رنگ اینٹوں والا ہے، پلاسٹر ابھی باقی ہے۔' },
-  { t:'تہہ خانہ: پلاسٹر + دروازے', d:'اندر پلاسٹر ہو گیا، چوکھٹیں لگ گئیں۔ واٹر پروفنگ زمین کے اندر ہے — نظر نہیں آتی، مگر یہی تہہ خانے کو خشک رکھتی ہے۔' },
-  { t:'شٹرنگ: گراؤنڈ سلیب کی تیاری', sch:1, d:'تہہ خانے کے اندر شٹرنگ و سہارے کھڑے ہیں — اوپر گراؤنڈ سلیب ڈھلے گی۔ یہ سہارے عارضی ہیں: سلیب پکتے ہی اتر جائیں گے۔ (مثالی منظر)' },
-  { t:'گراؤنڈ سلیب + سیڑھی', d:'شٹرنگ اتر گئی، گراؤنڈ چھت ڈل گئی — اور تہہ خانے سے اوپر آنے والی سیڑھی اسی سلیب کے ساتھ ڈھلی۔' },
-  { t:'گراؤنڈ: دیواریں کھڑی', d:'گراؤنڈ منزل کی اینٹوں کی دیواریں کھڑی — لیونگ، کمرے، کچن کی شکل واضح۔' },
-  { t:'گراؤنڈ: پلاسٹر + دروازے', d:'پلاسٹر و چوکھٹیں مکمل۔ بجلی و پلمبنگ کا کچا کام دیواروں کے اندر اسی مرحلے میں جاتا ہے — بعد میں دیوار توڑنا نہیں پڑتی۔' },
-  { t:'شٹرنگ: پہلی منزل سلیب', sch:1, d:'گراؤنڈ کے کمروں میں شٹرنگ و سہارے — پہلی منزل کی سلیب کی تیاری۔ (مثالی منظر: سہارے کمروں کے اندر ہیں، دیوار کاٹ کر نظر آئیں گے)' },
-  { t:'پہلی منزل سلیب + سیڑھی', d:'پہلی منزل کی چھت ڈل گئی، گراؤنڈ سے اوپر کی سیڑھی ساتھ ڈھلی۔' },
-  { t:'پہلی منزل: دیواریں کھڑی', d:'آخری منزل کی دیواریں کھڑی — لاؤنج، اسٹڈی اور جالی والا برآمدہ واضح۔' },
-  { t:'پہلی منزل: پلاسٹر + دروازے', d:'پلاسٹر مکمل، چوکھٹیں لگ گئیں — ڈھانچہ اندر سے تیار۔' },
-  { t:'شٹرنگ: چھت سلیب', sch:1, d:'پہلی منزل کے کمروں میں شٹرنگ — آخری چھت کی تیاری۔ (مثالی منظر)' },
-  { t:'چھت، ممٹی، ٹینکیاں', d:'آخری چھت ڈل گئی، ممٹی بنی، پانی کی ٹینکیاں لگ گئیں — اوپر جانے والی سیڑھی بھی اسی سلیب کے ساتھ ڈھلی۔' },
-  { t:'چھت کی واٹر پروفنگ و علاج', sch:1, d:'چھت پر پانی روکنے کی تہہ اور ڈھلوان کی جانچ — یہ کام ماڈل میں نظر نہیں آتا، مگر اصل تعمیر میں چھت رسنے سے بچاؤ یہی مرحلہ ہے۔ (مثالی مرحلہ)' },
-  { t:'فرش: تہہ خانہ', d:'تہہ خانے کا فرش بن گیا — ٹائل/ماربل کی تہہ لگ گئی۔' },
-  { t:'فرش: گراؤنڈ', d:'گراؤنڈ منزل کا فرش مکمل — اب کمرے «کمرے» لگنے لگے۔' },
-  { t:'فرش: پہلی منزل', d:'اوپر کی منزل کا فرش بھی مکمل۔' },
-  { t:'بیرونی فنش', d:'اگلے رخ کا شیشہ، پتھر کی فنیں، گیٹ اور باہر کا کام مکمل — گھر باہر سے تیار۔' },
-  { t:'فرنشنگ: تہہ خانہ', d:'تہہ خانے میں کچن، باتھ فکسچر اور فرنیچر آ گیا — ڈرائنگ ہال مہمانوں کے لیے تیار۔' },
-  { t:'فرنشنگ: گراؤنڈ', d:'گراؤنڈ منزل فرنشڈ — لیونگ، کچن اور کمرے رہنے کے قابل۔' },
-  { t:'مکمل گھر — حوالگی', d:'پہلی منزل بھی فرنشڈ۔ وہی گھر جو نقشے میں تھا، اب زمین پر کھڑا ہے — ہر مرحلہ پیچھے جا کر دوبارہ دیکھا جا سکتا ہے۔' },
+  { t:'پلاٹ و ترسیم', d:'خالی پلاٹ — پیمائش و نشان دہی مکمل۔ آگے کا ہر مرحلہ اسی زمین پر، اسی نقشے کے مطابق چڑھے گا۔' },
+  { t:'کھدائی', sch:1, d:'تہہ خانے کی کھدائی — مٹی کا گڑھا تیار۔ (مثالی منظر: اصل گہرائی و مٹی کی نوعیت سروے و سوائل رپورٹ سے طے ہو گی)' },
+  { t:'تراش، کمپیکشن، اینٹی ٹرمائٹ و PCC', sch:1, d:'گڑھے کی سطح برابر و دبی ہوئی، دیمک سے بچاؤ کا چھڑکاؤ، اور کنکریٹ کی پتلی تہہ (PCC) — بنیاد کا بستر تیار۔ یہ کام ماڈل میں نظر نہیں آتا، مگر بنیاد اسی پر ٹکتی ہے۔' },
+  { t:'رافٹ کا سریا و واٹر پروفنگ', sch:1, d:'پورے رقبے پر سریے کا جال بچھا، نیچے پانی روکنے کی تہہ۔ (مثالی مرحلہ: سریے کی اصل تفصیل اسٹرکچرل انجینئر کی ڈرائنگ سے آئے گی)' },
+  { t:'رافٹ کاسٹ', sch:1, d:'رافٹ سلیب ڈل گئی — سارا گھر ایک ہی مضبوط بنیاد پر کھڑا ہو گا۔ تہہ خانے کا فرشی ڈھانچہ بھی یہی ہے۔' },
+  { t:'کالم و ریٹیننگ ڈھانچہ', sch:1, d:'تہہ خانے کے ستون اور باہر کی مٹی روکنے والی دیواروں کا ڈھانچہ کھڑا۔ (مثالی مرحلہ: ستون اس ماڈل میں دیواروں کے اندر ضم ہیں)' },
+  { t:'تہہ خانہ دیواریں — شمالی حصہ', d:'شمالی حصے کی اینٹوں کی دیواریں کھڑی — ہال، کمرہ، کچن کی پہچان بننے لگی۔ رنگ اینٹوں والا ہے؛ پلاسٹر ابھی دور ہے۔' },
+  { t:'تہہ خانہ دیواریں — جنوبی حصہ', d:'جنوبی حصہ بھی کھڑا — ڈرائنگ ہال، دو کمرے، دو باتھ۔ تہہ خانے کا پورا خاکہ مکمل۔' },
+  { t:'تہہ خانہ واٹر پروفنگ و بیک فل', sch:1, d:'باہر کی دیواروں پر پانی روکنے کی تہہ، نالی (ڈرین) اور پھر تہوں میں مٹی بھرائی و دبائی۔ یہ کام دفن ہو جاتا ہے — غلطی یہاں ہو تو مرمت سب سے مہنگی پڑتی ہے۔' },
+  { t:'زیر زمین ڈرینج و ٹینک لائنیں', sch:1, d:'سیوریج، سیپٹک/مین لائن، پانی کے زیر زمین ٹینک و پائپ — فرش بند ہونے سے پہلے سب زیر زمین مکمل۔ (مثالی مرحلہ)' },
+  { t:'تہہ خانہ کچا کام: بجلی و پلمبنگ', sch:1, d:'دیواروں کے اندر پائپ و تاریں — پلاسٹر سے پہلے۔ یہی وہ مرحلہ ہے جسے چھوڑ کر بعد میں دیوار چیرنی پڑتی ہے۔' },
+  { t:'تہہ خانہ پلاسٹر', d:'دیواروں پر پلاسٹر — رنگ سرمئی ہے، یہ پلاسٹر کا اپنا رنگ ہے؛ پینٹ فنشنگ میں آئے گا۔' },
+  { t:'تہہ خانہ چوکھٹیں و دروازے', d:'چوکھٹیں و دروازے لگ گئے — مہمان خانے کا اپنا داخلی راستہ (D6) بھی کھل گیا۔' },
+  { t:'شٹرنگ: گراؤنڈ سلیب', sch:1, d:'تہہ خانے کے اندر لکڑی کے سہارے و شٹرنگ — اوپر گراؤنڈ سلیب ڈھلے گی۔ سہارے عارضی ہیں؛ سلیب پکتے ہی اتر جائیں گے۔' },
+  { t:'گراؤنڈ سلیب + سیڑھی', d:'شٹرنگ اتری، گراؤنڈ چھت ڈل گئی — اور تہہ خانے والی سیڑھی اسی سلیب کے ساتھ ڈھلی، الگ سے نہیں بنی۔' },
+  { t:'گراؤنڈ دیواریں — شمالی حصہ', d:'شمالی لیونگ (20×20) و کمروں کی اینٹیں کھڑی ہونے لگیں۔' },
+  { t:'گراؤنڈ دیواریں — جنوبی حصہ', d:'جنوبی لیونگ و کمرہ مکمل — گراؤنڈ منزل کا خاکہ بند ہو گیا۔' },
+  { t:'گراؤنڈ کچا کام: بجلی و پلمبنگ', sch:1, d:'گیلے کمروں کی لائنیں اپنے اسٹیک پر، تاریں دیواروں کے اندر — پلاسٹر سے پہلے سب اندر۔' },
+  { t:'گراؤنڈ پلاسٹر', d:'پلاسٹر مکمل — سرمئی دیواریں، پینٹ باقی۔' },
+  { t:'گراؤنڈ چوکھٹیں و دروازے', d:'مرکزی دروازے (D1) سمیت چوکھٹیں و دروازے لگ گئے۔' },
+  { t:'شٹرنگ: پہلی منزل سلیب', sch:1, d:'گراؤنڈ کے کمروں میں سہارے کھڑے — دیوار کاٹ کر دیکھیں تو اندر شٹرنگ نظر آئے گی۔' },
+  { t:'پہلی منزل سلیب + سیڑھی', d:'چھت ڈل گئی، سیڑھی ساتھ ڈھلی — سہارے اتر گئے۔' },
+  { t:'پہلی منزل دیواریں — شمالی حصہ', d:'لاؤنج، اسٹڈی و کمرے کی دیواریں کھڑی۔' },
+  { t:'پہلی منزل دیواریں — جنوبی حصہ', d:'جنوبی لاؤنج و کمرہ مکمل — آخری منزل کا خاکہ بند۔' },
+  { t:'پہلی منزل کچا کام', sch:1, d:'باتھ کی لائنیں اپنے اسٹیک (S2 · N1) پر، تاریں اندر — پلاسٹر سے پہلے۔' },
+  { t:'پہلی منزل پلاسٹر', d:'پلاسٹر مکمل — ڈھانچہ اندر سے تیار، سرمئی رنگ پلاسٹر کا ہے۔' },
+  { t:'پہلی منزل چوکھٹیں و دروازے', d:'اوپر کی منزل کے دروازے لگ گئے۔' },
+  { t:'شٹرنگ: چھت سلیب', sch:1, d:'آخری چھت کے سہارے — کمروں کے اندر کھڑے ہیں۔' },
+  { t:'چھت، ممٹی و ٹینکیاں', d:'آخری چھت ڈل گئی، ممٹی بنی، دونوں گھروں کی الگ ٹینکیاں لگ گئیں — چھت والی سیڑھی بھی اسی سلیب کے ساتھ ڈھلی۔' },
+  { t:'چھت واٹر پروفنگ و علاج', sch:1, d:'چھت پر پانی روکنے کی تہہ و ڈھلوان کی جانچ — ماڈل میں نظر نہیں آتی، مگر رساؤ سے بچاؤ یہی مرحلہ ہے۔' },
+  { t:'گیلے کمروں کا فرش: تہہ خانہ', d:'کچن و باتھ کا فرش و واٹر پروفنگ پہلے — پانی والے کمرے ہمیشہ پہلے بند ہوتے ہیں۔' },
+  { t:'فرش: تہہ خانہ', d:'باقی کمروں کا فرش مکمل — تہہ خانے کی زمین تیار۔' },
+  { t:'گیلے کمروں کا فرش: گراؤنڈ', d:'گراؤنڈ کچن و باتھ کا فرش بند۔' },
+  { t:'فرش: گراؤنڈ', d:'لیونگ و کمروں کا فرش — اب کمرے «کمرے» لگنے لگے۔' },
+  { t:'گیلے کمروں کا فرش: پہلی منزل', d:'اوپر کے باتھ کا فرش و واٹر پروفنگ۔' },
+  { t:'فرش: پہلی منزل', d:'لاؤنج، اسٹڈی و کمرے کا فرش مکمل۔' },
+  { t:'سیڑھیوں کی فنش', d:'تینوں سیڑھیوں پر ماربل فنش — رنگ بدل گیا دیکھیں، قدم اب تیار ہیں۔' },
+  { t:'کچن و باتھ فٹنگ: تہہ خانہ', d:'کچن کا سامان، باتھ کے فکسچر (کموز، بیسن، شاور، مسلم شاور) لگ گئے۔' },
+  { t:'کچن و باتھ فٹنگ: گراؤنڈ', d:'گراؤنڈ کچن و باتھ تیار — پانی و نکاسی کی جانچ کے بعد۔' },
+  { t:'کچن و باتھ فٹنگ: پہلی منزل', d:'اوپر کے باتھ کے فکسچر مکمل۔' },
+  { t:'پینٹ: تہہ خانہ', d:'سرمئی پلاسٹر پر اصل رنگ آ گیا — دیواریں «تیار» ہو گئیں۔' },
+  { t:'پینٹ: گراؤنڈ', d:'گراؤنڈ منزل کا پینٹ مکمل۔' },
+  { t:'پینٹ: پہلی منزل', d:'اوپر کی منزل بھی رنگ گئی — اندر کا کام تقریباً مکمل۔' },
+  { t:'بجلی فٹنگ: سوئچ، روشنی و پنکھے', sch:1, d:'سوئچ بورڈ، لائٹیں و پنکھے فٹ — ماڈل میں روشنی کا منظر شام والے بٹن سے دیکھا جا سکتا ہے۔ (مثالی مرحلہ)' },
+  { t:'اگلے رخ کی تیاری', sch:1, d:'بیرونی پلاسٹر و رخ کی سطح تیار — شیشہ و فنیں لگنے سے پہلے کا کام۔' },
+  { t:'اگلا رخ: شیشہ و فنیں', d:'مشرقی رخ کا شیشہ، پتھر کی فنیں و برونز پٹی — گھر کا چہرہ کھل گیا۔' },
+  { t:'گیٹ و بیرونی تکمیل', d:'دونوں گیٹ، صحن، کار پورچ و باہر کا کام مکمل۔' },
+  { t:'فرنشنگ: تہہ خانہ', d:'ڈرائنگ ہال میں صوفے و سامان — مہمان خانہ زندہ ہو گیا۔' },
+  { t:'فرنشنگ: گراؤنڈ', d:'لیونگ و کمروں کا فرنیچر آ گیا۔' },
+  { t:'فرنشنگ: پہلی منزل', d:'لاؤنج، اسٹڈی و کمرے فرنشڈ — بچوں کے اسٹڈی اسٹیشن بھی لگ گئے۔' },
+  { t:'آخری جانچ و صفائی (سنَیگنگ)', sch:1, d:'ہر دروازہ، نل و سوئچ جانچا گیا؛ چھوٹی خامیاں فہرست بند ہو کر دور ہوئیں۔ (مثالی مرحلہ)' },
+  { t:'مکمل گھر — حوالگی', d:'وہی گھر جو نقشے میں تھا، اب زمین پر کھڑا ہے۔ ہر مرحلہ سلائیڈر سے پیچھے جا کر دوبارہ دیکھا جا سکتا ہے۔' },
 ];
 
-  // shuttering + props per slab: TEMPORARY geometry (removed_at = casting stage)
-  if(!STAGE.shut){
-    STAGE.shut = {};
-    const TIM = M(0xa9805a), TIM2 = M(0x8a6844);
-    const mkShut = (slabBase, floorTop) => {
-      const g = new THREE.Group();
-      box(g, 0, slabBase - 0.22, 0, 63, 0.4, 47, TIM2);
-      for(let px = -28; px <= 28; px += 8) for(let pz = -20; pz <= 20; pz += 8){
-        if(px > -7 && px < 14 && (pz < -13 || pz > 13)) continue; // keep the stair cores clear
-        box(g, px, (floorTop + slabBase) / 2 - 0.2, pz, 0.35, slabBase - floorTop - 0.4, 0.35, TIM);
-      }
-      g.visible = false; scene.add(g); return g;
-    };
-    STAGE.shut.ground = mkShut(BASE.ground, 0.37);
-    STAGE.shut.first  = mkShut(BASE.first, BASE.ground + 0.37);
-    STAGE.shut.roof   = mkShut(BASE.first + FH.first, BASE.first + 0.37);
-  }
+// per-floor stage thresholds (52-stage numbering)
+const T = {
+  basement: { slab:5,  brickN:7,  brickS:8,  plaster:12, door:13, plateWet:31, plate:32, paint:41, furnWet:38, furn:48 },
+  ground:   { slab:15, brickN:16, brickS:17, plaster:19, door:20, plateWet:33, plate:34, paint:42, furnWet:39, furn:49 },
+  first:    { slab:22, brickN:23, brickS:24, plaster:26, door:27, plateWet:35, plate:36, paint:43, furnWet:40, furn:50 },
+};
+const BRICK = 0x9e5a38, PLASTER = 0xb9b3a4;
+
 function stageVis(n){
-  STAGE.shut.ground.visible = (n === 6);
-  STAGE.shut.first.visible  = (n === 10);
-  STAGE.shut.roof.visible   = (n === 14);
-  // per-floor thresholds — construction order, frame-first
-  const F = {
-    basement: { slab:4,  brick:4,  plaster:5,  door:5,  stair:7,  plate:17, furn:21 },
-    ground:   { slab:7,  brick:8,  plaster:9,  door:9,  stair:11, plate:18, furn:22 },
-    first:    { slab:11, brick:12, plaster:13, door:13, stair:15, plate:19, furn:23 },
-  };
   for(const fk of ['basement','ground','first']){
-    const th = F[fk], C = STAGE.cats[fk];
-    const set = (arr, on) => arr.forEach(m => m.visible = on);
-    set(C.slab, n >= th.slab);
-    set(C.plate, n >= th.plate);
-    set(C.stair, n >= th.stair);
-    set(C.door, n >= th.door);
-    set(C.furn, n >= th.furn);
-    const wstate = n >= th.plaster ? 2 : (n >= th.brick ? 1 : 0);
-    set(C.wall, wstate > 0);
-    const col = wstate === 1 ? BRICK : STAGE.origWall;
-    STAGE.wallMats[fk].color.setHex(col);
-    STAGE.coreMats[fk].color.setHex(wstate === 1 ? BRICK : STAGE.origCore);
+    const t = T[fk], C = STAGE.cats[fk];
+    C.slab.forEach(m => m.visible = n >= t.slab);
+    const stairAt = fk === 'basement' ? 15 : fk === 'ground' ? 22 : 29;
+    C.stair.forEach(m => m.visible = n >= stairAt);
+    C.door.forEach(m => m.visible = n >= t.door);
+    STAGE.wallHalf[fk].N.forEach(m => m.visible = n >= t.brickN);
+    STAGE.wallHalf[fk].S.forEach(m => m.visible = n >= t.brickS);
+    const col = n < t.plaster ? BRICK : n < t.paint ? PLASTER : STAGE.wallOrig[fk];
+    const colC = n < t.plaster ? BRICK : n < t.paint ? PLASTER : STAGE.wallOrig[fk + 'Core'];
+    STAGE.wallMats[fk].color.setHex(col); STAGE.wallMats[fk + 'Core'].color.setHex(colC);
+    STAGE.plateWet[fk].forEach(m => m.visible = n >= t.plateWet);
+    STAGE.plateRoom[fk].forEach(m => m.visible = n >= t.plate);
+    STAGE.furnWet[fk].forEach(m => m.visible = n >= t.furnWet);
+    STAGE.furnRoom[fk].forEach(m => m.visible = n >= t.furn);
   }
-  if(STAGE.siteLate) STAGE.siteLate.forEach(m => m.visible = n >= 20);
-  clipPlane.constant = (n >= 2 && n <= 6) ? 6.8 : 999;
-  if(ROOFG) ROOFG.visible = n >= 15;
-  if(FINSG) FINSG.visible = n >= 20;
-  if(STAGE.props){
-    STAGE.props.group.visible = n >= 2;
-    STAGE.props.pit.visible = n >= 2 && n <= 5;
-    STAGE.props.raft.visible = n >= 3;
-  }
+  TREADM.color.setHex(n >= 37 ? 0xd8d2c4 : STAGE.treadOrig);
+  if(ROOFG) ROOFG.visible = n >= 29;
+  if(FINSG) FINSG.visible = n >= 46;
+  STAGE.siteLate.forEach(m => m.visible = n >= 47);
+  STAGE.props.group.visible = n >= 2 && n <= 14;
+  STAGE.props.pit.visible = n >= 2;
+  STAGE.props.raft.visible = n >= 5;
+  STAGE.shut.ground.visible = (n === 14);
+  STAGE.shut.first.visible  = (n === 21);
+  STAGE.shut.roof.visible   = (n === 28);
+  clipPlane.constant = (n >= 2 && n <= 14) ? 6.8 : 999;
+  STAGE.clientItems.forEach(ci => ci.g.visible = n >= 52);
 }
 
 function stageUI(){
   const bar = document.createElement('div');
   bar.id = 'stageBar';
-  bar.style.cssText = 'display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:60;width:min(680px,94vw);background:rgba(10,26,59,.96);border:1.5px solid #3DAB94;border-radius:16px;padding:10px 14px;color:#F4F1EA;font-family:inherit;box-shadow:0 14px 34px rgba(0,0,0,.5)';
+  bar.style.cssText = 'display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:70;width:min(680px,94vw);background:rgba(10,26,59,.96);border:1.5px solid #3DAB94;border-radius:16px;padding:10px 14px 12px;color:#F4F1EA;box-shadow:0 16px 40px rgba(0,0,0,.5)';
   bar.innerHTML =
-    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
       '<button id="stPrev" style="flex:0 0 auto">◀ پچھلا</button>' +
       '<button id="stPlay" style="flex:0 0 auto;background:#3DAB94;color:#04231b;border:none">▶ چلاؤ</button>' +
       '<button id="stNext" style="flex:0 0 auto">اگلا ▶</button>' +
@@ -1986,34 +2039,43 @@ function stageUI(){
     '<div id="stDesc" style="font-size:14.5px;line-height:2.1;color:#D9D2C2"></div>' +
     '<input id="stRange" type="range" min="1" max="' + STAGES.length + '" step="1" value="1" style="width:100%;margin-top:6px;accent-color:#3DAB94">';
   document.body.appendChild(bar);
-  bar.querySelectorAll('button').forEach(b => { b.style.cssText += ';font-family:inherit;font-size:14.5px;line-height:2.1;padding:2px 14px;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer'; });
+  bar.querySelectorAll('button').forEach(b => { if(b.id !== 'stPlay') b.style.cssText += ';font-family:inherit;font-size:14px;line-height:2.1;padding:1px 14px;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer'; else b.style.cssText += ';font-family:inherit;font-size:14px;line-height:2.1;padding:1px 16px;border-radius:10px;cursor:pointer'; });
   $('stPrev').onclick = () => stageGo(STAGE.n - 1);
   $('stNext').onclick = () => stageGo(STAGE.n + 1);
   $('stExit').onclick = () => stageMode(false);
-  $('stRange').oninput = e => stageGo(parseInt(e.target.value, 10));
+  $('stRange').oninput = e => stageGo(parseInt(e.target.value));
   $('stPlay').onclick = () => {
-    if(STAGE.timer){ stagePlayStop(); return; }
-    $('stPlay').textContent = '⏸ روکو';
-    STAGE.timer = setInterval(() => { if(STAGE.n >= STAGES.length){ stagePlayStop(); return; } stageGo(STAGE.n + 1); }, 2800);
+    STAGE.playing = !STAGE.playing;
+    $('stPlay').textContent = STAGE.playing ? '⏸ روکو' : '▶ چلاؤ';
+    if(STAGE.playing){
+      STAGE.timer = setInterval(() => { if(STAGE.n >= STAGES.length){ $('stPlay').click(); return; } stageGo(STAGE.n + 1); }, 2400);
+    } else { clearInterval(STAGE.timer); STAGE.timer = null; }
   };
   // entry button next to the Tour button (hidden when the field demo locks stages: ?lock=stages)
   const tb = $('tourBtn');
   if(tb && !/[?&]lock=stages/.test(location.search)){
     const b = document.createElement('button');
-    b.id = 'stageBtn'; b.className = tb.className;
-    b.textContent = '🏗 بنتا ہوا گھر · Build Stages';
+    b.id = 'stageBtn'; b.className = tb.className; b.textContent = '🏗 بنتا ہوا گھر · Build Stages';
     b.onclick = () => stageMode(true);
     tb.parentNode.insertBefore(b, tb.nextSibling);
   }
 }
-function stagePlayStop(){
-  if(STAGE.timer){ clearInterval(STAGE.timer); STAGE.timer = null; }
-  const p = $('stPlay'); if(p) p.textContent = '▶ چلاؤ';
-}
+
+const _origApplyVisibility = applyVisibility;
+applyVisibility = function(){
+  if(STAGE.on){
+    for(const fk of ['basement','ground','first']){ FG[fk].visible = true; FURNG[fk].visible = true; }
+    if(SITE) SITE.visible = true;
+    stageVis(STAGE.n);
+    return;
+  }
+  _origApplyVisibility();
+};
+
 function stageGo(n){
   const prev = STAGE.n;
   STAGE.n = Math.max(1, Math.min(STAGES.length, n));
-  const lowNow = STAGE.n >= 2 && STAGE.n <= 6, lowPrev = prev >= 2 && prev <= 6;
+  const lowNow = STAGE.n >= 2 && STAGE.n <= 14, lowPrev = prev >= 2 && prev <= 14;
   if(STAGE.on && lowNow !== lowPrev){
     if(lowNow) tweenCam(new THREE.Vector3(-64, 30, 64), new THREE.Vector3(0, 3, 0), 1000);
     else tweenCam(new THREE.Vector3(-92, 66, 92), new THREE.Vector3(0, 15, 0), 1000);
@@ -2023,41 +2085,42 @@ function stageGo(n){
   $('stCount').textContent = 'مرحلہ ' + STAGE.n + ' از ' + STAGES.length;
   $('stTitle').textContent = s.t;
   $('stDesc').textContent = s.d;
-  $('stSch').style.display = s.sch ? '' : 'none';
+  $('stSch').style.display = s.sch ? 'inline-block' : 'none';
   $('stRange').value = STAGE.n;
-  $('stPrev').disabled = STAGE.n <= 1;
-  $('stNext').disabled = STAGE.n >= STAGES.length;
 }
-const _origApplyVisibility = applyVisibility;
-applyVisibility = function(){
-  if(STAGE.on){ for(const fk of ['basement','ground','first']) FG[fk].visible = true; if(SITE) SITE.visible = true; stageVis(STAGE.n); return; }
-  _origApplyVisibility();
-};
+
 function stageMode(on){
   STAGE.on = on;
-  stagePlayStop();
   $('stageBar').style.display = on ? 'block' : 'none';
   if(on){
-    if(state.two) setTwoHouses(false);
-    state.journey = null; state.route = null;
+    if(state.twoHouses) setTwoHouses(false);
+    state.journey = null; clearRoute();
     setFloor('all', true);
     setMode('model');
     labelBox.style.display = 'none';
-    for(const fk of ['basement','ground','first']) FG[fk].visible = true;
-    if(SITE) SITE.visible = true;
+    tweenCam(new THREE.Vector3(-92, 66, 92), new THREE.Vector3(0, 15, 0), 900);
     stageGo(STAGE.n || 1);
-    tweenCam(new THREE.Vector3(-92, 66, 92), new THREE.Vector3(0, 15, 0), 1100);
-    toast('بنتا ہوا گھر — مرحلہ وار تعمیر۔ نیچے والے سلائیڈر سے آگے پیچھے جائیں');
+    toast('بنتا ہوا گھر — 52 مرحلے، سلائیڈر سے آگے پیچھے جائیں');
   } else {
+    if(STAGE.playing) $('stPlay').click();
     labelBox.style.display = '';
     for(const fk of ['basement','ground','first']){
-      for(const k of ['slab','plate','wall','stair','door','furn']) STAGE.cats[fk][k].forEach(m => m.visible = true);
-      STAGE.wallMats[fk].color.setHex(STAGE.origWall);
-      STAGE.coreMats[fk].color.setHex(STAGE.origCore);
+      const C = STAGE.cats[fk];
+      C.slab.forEach(m => m.visible = true);
+      C.stair.forEach(m => m.visible = true);
+      C.door.forEach(m => m.visible = true);
+      C.wall.forEach(m => m.visible = true);
+      STAGE.wallMats[fk].color.setHex(STAGE.wallOrig[fk]);
+      STAGE.wallMats[fk + 'Core'].color.setHex(STAGE.wallOrig[fk + 'Core']);
+      STAGE.plateWet[fk].forEach(m => m.visible = true);
+      STAGE.plateRoom[fk].forEach(m => m.visible = true);
     }
-    if(STAGE.props) STAGE.props.group.visible = false;
-    if(STAGE.shut) for(const k in STAGE.shut) STAGE.shut[k].visible = false;
-    if(STAGE.siteLate) STAGE.siteLate.forEach(m => m.visible = true);
+    STAGE.furnAll.forEach(m => m.visible = true);
+    TREADM.color.setHex(STAGE.treadOrig);
+    STAGE.props.group.visible = false;
+    for(const k in STAGE.shut) STAGE.shut[k].visible = false;
+    STAGE.siteLate.forEach(m => m.visible = true);
+    STAGE.clientItems.forEach(ci => ci.g.visible = true);
     applyCut();
     _origApplyVisibility();
   }
@@ -2215,6 +2278,7 @@ function placeConfirm(){
   solid.position.copy(p); solid.rotation.y = PLACE.rot * Math.PI / 180;
   FURNG[rec.fk].add(solid);
   PLACE.placed.push({ roomId: rec.id, kind: PLACE.kind, group: solid });
+  STAGE.clientItems.push({ g: solid, fk: rec.fk });
   placeCancel();
   placeStatus('رکھ دیا گیا ✓ — کل رکھا گیا سامان: ' + PLACE.placed.length);
   toast('سامان رکھ دیا گیا');
