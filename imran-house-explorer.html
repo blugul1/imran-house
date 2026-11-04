@@ -2608,5 +2608,82 @@ function objUI(){
 buildColumns();
 classifyWindows();
 objUI();
+
+// ================= Explorer v12b — Beams + Lintel Band objects =================
+// Beams sit on the Sheet-13 column grid lines, cast WITH the slab above each
+// floor (so they appear at that slab's stage). Sizes are ESTIMATED (register
+// item 17) and positions representative — the panel says so. The lintel band
+// is a frozen design element (register item 20); its modelled height is
+// representative. Both live inside walls/ceilings in the finished view and
+// show in stage mode, the Structure layer, or via the Objects toggle.
+OBJ.beams = null; OBJ.bands = null; OBJ.showFrame = false;
+OBJ.beamStage = { basement:15, ground:22, first:29 };
+OBJ.bandStage = { basement:12, ground:19, first:26 };
+const GX7 = [0, 20, 26.375, 44.96, 48.5, 55, 63.5];
+const WAt = x => 22.375 + 1.5 * x / 63.5;
+function buildFrame(){
+  const bg = new THREE.Group(), ng = new THREE.Group();
+  const BM = M(0x8a877e), NM = M(0xa39e8f);
+  let nb = 0, nn = 0;
+  for(const fk of ['basement','ground','first']){
+    const topY = BASE[fk] + FH[fk];
+    GX7.forEach((gx, i) => {
+      const m = box(bg, X(gx), topY - 0.55, 0, 1.0, 1.1, 2 * WAt(gx), BM);
+      m.userData.obj = { kind:'beam', fk:fk, id:'BM-' + fk[0].toUpperCase() + '-T' + (i + 1) }; nb++;
+    });
+    const c = box(bg, X(31.75), topY - 0.55, 0, 63.5, 1.1, 1.0, BM);
+    c.userData.obj = { kind:'beam', fk:fk, id:'BM-' + fk[0].toUpperCase() + '-C' }; nb++;
+    for(const s of [-1, 1]) for(let k = 0; k < 4; k++){
+      const xa = k * 15.875, xb = xa + 15.875, xm = (xa + xb) / 2;
+      const m = box(bg, X(xm), topY - 0.55, s * WAt(xm), 15.9, 1.1, 1.0, BM);
+      m.userData.obj = { kind:'beam', fk:fk, id:'BM-' + fk[0].toUpperCase() + '-S' + (s < 0 ? 'N' : 'S') + (k + 1) }; nb++;
+      const b2 = box(ng, X(xm), BASE[fk] + 8.2, s * WAt(xm), 15.9, 0.6, 0.75, NM);
+      b2.userData.obj = { kind:'band', fk:fk, id:'LB-' + fk[0].toUpperCase() + '-S' + (s < 0 ? 'N' : 'S') + (k + 1) }; nn++;
+    }
+    const bc = box(ng, X(31.75), BASE[fk] + 8.2, 0, 63.5, 0.6, 0.75, NM);
+    bc.userData.obj = { kind:'band', fk:fk, id:'LB-' + fk[0].toUpperCase() + '-C' }; nn++;
+    for(const e of [0, 63.5]){
+      const b3 = box(ng, X(e), BASE[fk] + 8.2, 0, 0.75, 0.6, 2 * WAt(e), NM);
+      b3.userData.obj = { kind:'band', fk:fk, id:'LB-' + fk[0].toUpperCase() + (e === 0 ? '-E' : '-W') }; nn++;
+    }
+  }
+  bg.visible = false; ng.visible = false; scene.add(bg); scene.add(ng);
+  OBJ.beams = bg; OBJ.bands = ng; OBJ.beamCount = nb; OBJ.bandCount = nn;
+}
+const _stageVisF = stageVis;
+stageVis = function(n){
+  _stageVisF(n);
+  if(!OBJ.beams || !STAGE.on) return;
+  OBJ.beams.visible = true; OBJ.bands.visible = true;
+  for(const m of OBJ.beams.children) m.visible = n >= OBJ.beamStage[m.userData.obj.fk];
+  for(const m of OBJ.bands.children) m.visible = n >= OBJ.bandStage[m.userData.obj.fk];
+};
+const _stageModeF = stageMode;
+stageMode = function(on){
+  _stageModeF(on);
+  if(!OBJ.beams) return;
+  if(!on){ const v = OBJ.showFrame || LAY.mode === 'structure'; OBJ.beams.visible = v; OBJ.bands.visible = v; }
+};
+const _layerSetF = layerSet;
+layerSet = function(mode){
+  _layerSetF(mode);
+  if(OBJ.beams && !STAGE.on){ const v = (mode === 'structure') || OBJ.showFrame; OBJ.beams.visible = v; OBJ.bands.visible = v; }
+};
+buildFrame();
+(function frameUI(){
+  const p = document.getElementById('objPanel');
+  if(!p) return;
+  const d = document.createElement('div');
+  d.style.cssText = 'font-size:14px;line-height:2.2;border-top:1px solid #2b4d82;margin-top:8px;padding-top:6px';
+  d.innerHTML = 'بیم: <b>' + OBJ.beamCount + '</b> · لینٹل بینڈ: <b>' + OBJ.bandCount + '</b> حصے' +
+    '<button id="objFrame" style="display:block;margin-top:6px;width:100%;font-family:inherit;font-size:14px;line-height:2.1;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer">بیم و بینڈ دکھائیں</button>' +
+    '<div style="font-size:12px;line-height:2;color:#A9B8CC">بیم گرڈ لائنوں پر نمائندہ ہیں، سائز تخمینی (EST)؛ بینڈ کی اونچائی نمائندہ ہے۔ دونوں مراحل و ڈھانچہ تہہ میں خود نظر آتے ہیں۔</div>';
+  p.insertBefore(d, p.querySelector('#objClose'));
+  d.querySelector('#objFrame').onclick = (e) => {
+    OBJ.showFrame = !OBJ.showFrame;
+    if(!STAGE.on){ OBJ.beams.visible = OBJ.showFrame; OBJ.bands.visible = OBJ.showFrame; }
+    e.target.textContent = OBJ.showFrame ? 'بیم و بینڈ چھپائیں' : 'بیم و بینڈ دکھائیں';
+  };
+})();
 </script>
 </body></html>
