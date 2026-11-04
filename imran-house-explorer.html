@@ -946,14 +946,16 @@ function buildFinsGlass(){
     box(g, X(0)-0.62, base + FH[fk] + 0.1, 0, 0.5, 0.55, 42, M(0xa88a62));   // muted satin-bronze fascia band per floor (east)
     // north & south facade windows: white frame + glass, aligned to rooms
     for(const s of [-1,1]) for(const wx of [6, 16, 34, 52]){
-      box(g, X(wx), base + 7, s*23.34, 4.6, 5.4, 0.3, M(0xf4f2ec));
-      box(g, X(wx), base + 7, s*23.42, 4.0, 4.8, 0.22, FACGLASS);
-      box(g, X(wx), base + 4.15, s*23.38, 5.0, 0.35, 0.4, M(0xd9d2c0));
+      const wid = fk + (s < 0 ? '-N-' : '-S-') + wx;
+      const wf = box(g, X(wx), base + 7, s*23.34, 4.6, 5.4, 0.3, M(0xf4f2ec)); wf.userData.winFk = fk; wf.userData.winId = wid;
+      const wg = box(g, X(wx), base + 7, s*23.42, 4.0, 4.8, 0.22, FACGLASS); wg.userData.winFk = fk; wg.userData.winId = wid;
+      const ws = box(g, X(wx), base + 4.15, s*23.38, 5.0, 0.35, 0.4, M(0xd9d2c0)); ws.userData.winFk = fk; ws.userData.winId = wid;
     }
     // west facade: wide windows on GROUND only — on FIRST the walnut jali veranda panels are the west feature (do not cover them)
     if(fk === 'ground') for(const s of [-1,1]){
-      box(g, 32.04, base + 7, s*10, 0.3, 5.4, 8.6, M(0xf4f2ec));
-      box(g, 32.12, base + 7, s*10, 0.22, 4.8, 8.0, FACGLASS);
+      const wid = 'ground-W-' + s;
+      const wf = box(g, 32.04, base + 7, s*10, 0.3, 5.4, 8.6, M(0xf4f2ec)); wf.userData.winFk = 'ground'; wf.userData.winId = wid;
+      const wg = box(g, 32.12, base + 7, s*10, 0.22, 4.8, 8.0, FACGLASS); wg.userData.winFk = 'ground'; wg.userData.winId = wid;
     }
     box(g, 32.12, base + FH[fk] + 0.1, 0, 0.4, 0.55, 42, M(0xa88a62));
   }
@@ -1934,7 +1936,7 @@ const STAGES = [
   { t:'تراش، کمپیکشن، اینٹی ٹرمائٹ و PCC', sch:1, d:'گڑھے کی سطح برابر و دبی ہوئی، دیمک سے بچاؤ کا چھڑکاؤ، اور کنکریٹ کی پتلی تہہ (PCC) — بنیاد کا بستر تیار۔ یہ کام ماڈل میں نظر نہیں آتا، مگر بنیاد اسی پر ٹکتی ہے۔' },
   { t:'رافٹ کا سریا و واٹر پروفنگ', sch:1, d:'پورے رقبے پر سریے کا جال بچھا، نیچے پانی روکنے کی تہہ۔ (مثالی مرحلہ: سریے کی اصل تفصیل اسٹرکچرل انجینئر کی ڈرائنگ سے آئے گی)' },
   { t:'رافٹ کاسٹ', sch:1, d:'رافٹ سلیب ڈل گئی — سارا گھر ایک ہی مضبوط بنیاد پر کھڑا ہو گا۔ تہہ خانے کا فرشی ڈھانچہ بھی یہی ہے۔' },
-  { t:'کالم و ریٹیننگ ڈھانچہ', sch:1, d:'تہہ خانے کے ستون اور باہر کی مٹی روکنے والی دیواروں کا ڈھانچہ کھڑا۔ (مثالی مرحلہ: ستون اس ماڈل میں دیواروں کے اندر ضم ہیں)' },
+  { t:'کالم و ریٹیننگ ڈھانچہ', sch:1, d:'کالم ماڈل میں کھڑے نظر آئیں گے — جگہ ہماری سیٹنگ آؤٹ شیٹ سے، سائز تخمینی (EST)؛ سریے و ریٹیننگ دیوار کی تفصیل تصوراتی ہے۔' },
   { t:'تہہ خانہ دیواریں — شمالی حصہ', d:'شمالی حصے کی اینٹوں کی دیواریں کھڑی — ہال، کمرہ، کچن کی پہچان بننے لگی۔ رنگ اینٹوں والا ہے؛ پلاسٹر ابھی دور ہے۔' },
   { t:'تہہ خانہ دیواریں — جنوبی حصہ', d:'جنوبی حصہ بھی کھڑا — ڈرائنگ ہال، دو کمرے، دو باتھ۔ تہہ خانے کا پورا خاکہ مکمل۔' },
   { t:'تہہ خانہ واٹر پروفنگ و بیک فل', sch:1, d:'باہر کی دیواروں پر پانی روکنے کی تہہ، نالی (ڈرین) اور پھر تہوں میں مٹی بھرائی و دبائی۔ یہ کام دفن ہو جاتا ہے — غلطی یہاں ہو تو مرمت سب سے مہنگی پڑتی ہے۔' },
@@ -1971,7 +1973,9 @@ const STAGES = [
   { t:'کچن و باتھ فٹنگ: پہلی منزل', d:'اوپر کے باتھ کے فکسچر مکمل۔' },
   { t:'پینٹ: تہہ خانہ', d:'سرمئی پلاسٹر پر اصل رنگ آ گیا — دیواریں «تیار» ہو گئیں۔' },
   { t:'پینٹ: گراؤنڈ', d:'گراؤنڈ منزل کا پینٹ مکمل۔' },
+  { t:'کھڑکیاں و شیشہ: گراؤنڈ', d:'ہر کھڑکی اپنی جگہ نصب — فریم، شیشہ و سل سمیت، الگ شے کے طور پر۔' },
   { t:'پینٹ: پہلی منزل', d:'اوپر کی منزل بھی رنگ گئی — اندر کا کام تقریباً مکمل۔' },
+  { t:'کھڑکیاں و شیشہ: پہلی منزل', d:'پہلی منزل کی کھڑکیاں نصب۔' },
   { t:'بجلی فٹنگ: سوئچ، روشنی و پنکھے', sch:1, d:'سوئچ بورڈ، لائٹیں و پنکھے فٹ — ماڈل میں روشنی کا منظر شام والے بٹن سے دیکھا جا سکتا ہے۔ (مثالی مرحلہ)' },
   { t:'اگلے رخ کی تیاری', sch:1, d:'بیرونی پلاسٹر و رخ کی سطح تیار — شیشہ و فنیں لگنے سے پہلے کا کام۔' },
   { t:'اگلا رخ: شیشہ و فنیں', d:'مشرقی رخ کا شیشہ، پتھر کی فنیں و برونز پٹی — گھر کا چہرہ کھل گیا۔' },
@@ -1985,9 +1989,9 @@ const STAGES = [
 
 // per-floor stage thresholds (52-stage numbering)
 const T = {
-  basement: { slab:5,  brickN:7,  brickS:8,  plaster:12, door:13, plateWet:31, plate:32, paint:41, furnWet:38, furn:48 },
-  ground:   { slab:15, brickN:16, brickS:17, plaster:19, door:20, plateWet:33, plate:34, paint:42, furnWet:39, furn:49 },
-  first:    { slab:22, brickN:23, brickS:24, plaster:26, door:27, plateWet:35, plate:36, paint:43, furnWet:40, furn:50 },
+  basement: { slab:5,  brickN:7,  brickS:8,  plaster:12, door:13, plateWet:31, plate:32, paint:41, furnWet:38, furn:50 },
+  ground:   { slab:15, brickN:16, brickS:17, plaster:19, door:20, plateWet:33, plate:34, paint:42, furnWet:39, furn:51 },
+  first:    { slab:22, brickN:23, brickS:24, plaster:26, door:27, plateWet:35, plate:36, paint:44, furnWet:40, furn:52 },
 };
 const BRICK = 0x9e5a38, PLASTER = 0xb9b3a4;
 
@@ -2010,8 +2014,8 @@ function stageVis(n){
   }
   TREADM.color.setHex(n >= 37 ? 0xd8d2c4 : STAGE.treadOrig);
   if(ROOFG) ROOFG.visible = n >= 29;
-  if(FINSG) FINSG.visible = n >= 46;
-  STAGE.siteLate.forEach(m => m.visible = n >= 47);
+  if(FINSG) FINSG.visible = n >= 48;
+  STAGE.siteLate.forEach(m => m.visible = n >= 49);
   STAGE.props.group.visible = n >= 2 && n <= 14;
   STAGE.props.pit.visible = n >= 2;
   STAGE.props.raft.visible = n >= 5;
@@ -2019,7 +2023,7 @@ function stageVis(n){
   STAGE.shut.first.visible  = (n === 21);
   STAGE.shut.roof.visible   = (n === 28);
   clipPlane.constant = (n >= 2 && n <= 14) ? 6.8 : 999;
-  STAGE.clientItems.forEach(ci => ci.g.visible = n >= 52);
+  STAGE.clientItems.forEach(ci => ci.g.visible = n >= 54);
 }
 
 function stageUI(){
@@ -2100,7 +2104,7 @@ function stageMode(on){
     labelBox.style.display = 'none';
     tweenCam(new THREE.Vector3(-92, 66, 92), new THREE.Vector3(0, 15, 0), 900);
     stageGo(STAGE.n || 1);
-    toast('بنتا ہوا گھر — 52 مرحلے، سلائیڈر سے آگے پیچھے جائیں');
+    toast('بنتا ہوا گھر — 54 مرحلے، سلائیڈر سے آگے پیچھے جائیں');
   } else {
     if(STAGE.playing) $('stPlay').click();
     labelBox.style.display = '';
@@ -2510,5 +2514,99 @@ function layerUI(){
   b.onclick = () => { p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
 }
 layerUI();
+
+// ================= Explorer v12 — Object Layer =================
+// The step from meshes to OBJECTS: columns and windows become registered
+// items with IDs, countable and stage-governed. Column positions come from
+// our own Sheet 13 setting-out data (COLS table in draw_set10.py); sizes are
+// ESTIMATED (register item 17) and the panel says so. Windows are the facade
+// units already drawn in buildFinsGlass, now tagged per unit in part2.
+const OBJ = { cols:null, colCount:0, showCols:false,
+  colStage:{ basement:6, ground:14, first:21 }, winStage:{ ground:43, first:45 },
+  winObjs:{ ground:[], first:[] }, finsRest:[] };
+const COLS17 = [[0,0],[0,12],[0,21],[20,0],[20,10],[20,19],[26.375,0],[26.375,10],[44.96,0],[44.96,10],[48.5,0],[48.5,13.375],[55,13.375],[55,21.375],[63.5,0],[63.5,13],[63.5,22.5]];
+function colType(x, y){ if(x === 26.375 || x === 44.96 || (x === 0 && y === 0)) return 'C3'; if(x === 0 || x === 63.5 || y === 0) return 'C1'; return 'C2'; }
+function buildColumns(){
+  const g = new THREE.Group();
+  const MAT = M(0x96938a);
+  let count = 0;
+  for(const fk of ['basement','ground','first']){
+    for(const half of ['N','S']){
+      COLS17.forEach((pt, i) => {
+        const cx = pt[0], cy = pt[1];
+        if(cy === 0 && half === 'S') return;   // centre-line columns are shared — build once
+        const t = colType(cx, cy);
+        const w = t === 'C3' ? 1.75 : t === 'C1' ? 1.5 : 1.0;
+        const d = t === 'C3' ? 1.25 : 1.0;
+        const m = box(g, X(cx), BASE[fk] + FH[fk] / 2, half === 'N' ? -cy : cy, w, FH[fk], d, MAT);
+        m.userData.obj = { kind:'column', fk:fk, type:t, id:'COL-' + fk[0].toUpperCase() + '-P' + (i + 1) + (cy === 0 ? '' : '-' + half) };
+        count++;
+      });
+    }
+  }
+  g.visible = false; scene.add(g);
+  OBJ.cols = g; OBJ.colCount = count;
+}
+function classifyWindows(){
+  if(!FINSG) return;
+  for(const ch of FINSG.children){
+    if(ch.userData && ch.userData.winFk) OBJ.winObjs[ch.userData.winFk].push(ch);
+    else OBJ.finsRest.push(ch);
+  }
+}
+const _stageVisO = stageVis;
+stageVis = function(n){
+  _stageVisO(n);
+  if(!OBJ.cols || !STAGE.on) return;
+  OBJ.cols.visible = true;
+  for(const m of OBJ.cols.children) m.visible = n >= OBJ.colStage[m.userData.obj.fk];
+  if(FINSG){
+    FINSG.visible = n >= OBJ.winStage.ground || n >= 48;
+    for(const fk of ['ground','first']) for(const m of OBJ.winObjs[fk]) m.visible = n >= OBJ.winStage[fk];
+    for(const m of OBJ.finsRest) m.visible = n >= 48;
+  }
+};
+const _stageModeO = stageMode;
+stageMode = function(on){
+  _stageModeO(on);
+  if(!OBJ.cols) return;
+  if(!on){ OBJ.cols.visible = OBJ.showCols; if(FINSG) for(const m of FINSG.children) m.visible = true; }
+};
+const _layerSetO = layerSet;
+layerSet = function(mode){
+  _layerSetO(mode);
+  if(OBJ.cols && !STAGE.on) OBJ.cols.visible = (mode === 'structure') || OBJ.showCols;
+};
+function objUI(){
+  const b = document.createElement('button');
+  b.id = 'objBtn'; b.textContent = '🔢 اشیاء · Objects';
+  const lb = $('layBtn');
+  if(lb){ b.className = lb.className; lb.parentNode.insertBefore(b, lb.nextSibling); }
+  const winUnits = new Set(); for(const fk of ['ground','first']) for(const m of OBJ.winObjs[fk]) winUnits.add(m.userData.winId);
+  const p = document.createElement('div');
+  p.id = 'objPanel';
+  p.style.cssText = 'display:none;position:fixed;top:86px;inset-inline-start:12px;z-index:60;width:300px;max-width:86vw;background:rgba(10,26,59,.97);border:1.5px solid #3DAB94;border-radius:16px;padding:12px 14px;color:#F4F1EA;box-shadow:0 14px 34px rgba(0,0,0,.5)';
+  p.innerHTML =
+    '<div style="font-size:16.5px;line-height:2">🔢 رجسٹرڈ اشیاء</div>' +
+    '<div style="font-size:12.5px;line-height:2;color:#A9B8CC">اب یہ صرف شکلیں نہیں — ہر بڑی شے کا نمبر، گنتی و مرحلہ ہے۔ یہی پروڈکشن ماڈل کی بنیاد ہے۔</div>' +
+    '<div style="font-size:14px;line-height:2.2;margin-top:6px">' +
+      'کالم: <b>' + OBJ.colCount + '</b> (ہر منزل 28) · کھڑکیاں (اگلا رخ): <b>' + winUnits.size + '</b> یونٹ<br>' +
+      'دروازے: <b>' + DOORRECS.length + '</b> · کمرے: <b>' + ROOMS.length + '</b> · فرنیچر و فٹنگ اشیاء: <b>' + STAGE.furnAll.length + '</b>' +
+    '</div>' +
+    '<button id="objCols" style="margin-top:8px;width:100%;font-family:inherit;font-size:14px;line-height:2.1;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer">کالم دکھائیں</button>' +
+    '<div style="font-size:12px;line-height:2;color:#A9B8CC;border-top:1px solid #2b4d82;margin-top:8px;padding-top:6px">کالم کی جگہ ہماری سیٹنگ آؤٹ شیٹ (Sheet 13) سے ہے؛ سائز تخمینی (EST) ہیں — یہ انجینئرنگ تصدیق نہیں۔ تیار گھر میں کالم پلاسٹر کے اندر ہوتے ہیں، اس لیے عام منظر میں چھپے رہتے ہیں؛ مراحل و ڈھانچہ تہہ میں نظر آتے ہیں۔</div>' +
+    '<button id="objClose" style="margin-top:8px;width:100%;font-family:inherit;font-size:14px;line-height:2.1;border-radius:10px;background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;cursor:pointer">بند کریں</button>';
+  document.body.appendChild(p);
+  p.querySelector('#objCols').onclick = (e) => {
+    OBJ.showCols = !OBJ.showCols;
+    if(!STAGE.on) OBJ.cols.visible = OBJ.showCols;
+    e.target.textContent = OBJ.showCols ? 'کالم چھپائیں' : 'کالم دکھائیں';
+  };
+  p.querySelector('#objClose').onclick = () => { p.style.display = 'none'; };
+  b.onclick = () => { p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
+}
+buildColumns();
+classifyWindows();
+objUI();
 </script>
 </body></html>
