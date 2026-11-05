@@ -161,7 +161,10 @@
   <b>🔍 اسکرول / دو انگلیاں (Zoom):</b> قریب و دور — بالکل قریب جا کر چھوٹی تفصیل بھی دیکھیں۔<br>
   <b>👉 ایک کلک (Click):</b> کسی کمرے، دروازے یا چیز پر کلک کریں — اس کی تفصیل کھل جائے گی۔ دروازہ کلک سے کھلتا و بند ہوتا ہے۔<br>
   <b>🎯 ڈبل کلک:</b> سیدھا اسی جگہ پہنچ جائیں۔<br>
+  <b>✌ دو انگلیاں گھسیٹیں:</b> منظر اِدھر اُدھر سرکائیں (زوم کے لیے پھیلائیں/سکیڑیں)۔<br>
+  <b>🎨 دبا کر رکھیں (Long press):</b> کسی کمرے پر انگلی/ماؤس دبا کر رکھیں — اسی کمرے کا فنش (فرش و دیوار کا رنگ) کھل جائے گا۔<br>
   <b>☰ سب کام مینیو:</b> باقی ہر چیز ایک ہی مینیو میں ہے — سیڑھیوں کا راستہ، رہنما سیر، فنش بدلنا، بنتا ہوا گھر (54 مراحل)، جانچ، تخمینہ، وقت و سورج، مشن۔<br>
+  <b>🚶 چلیں (Walk):</b> اندر جا کر <b>زمین پر جہاں ٹیپ کریں، وہیں پہنچ جائیں گے</b> — کی بورڈ (W A S D) بھی چلتا ہے، ڈریگ سے اِدھر اُدھر دیکھیں۔<br>
   <b>اوپر والی پٹی:</b> صرف دو چیزیں — انداز (پلان / ماڈل / چلیں) اور منزل (تہہ خانہ / گراؤنڈ / پہلی / سب)۔ «چلیں» میں تیر والے بٹنوں یا W A S D سے گھر کے اندر چلیں؛ دیواریں روکتی ہیں، دروازوں سے گزریں۔<br>
   <b>🪜 سیڑھیاں:</b> مینیو کا پہلا بٹن «مجھے سیڑھیوں تک پہنچاؤ» — پھر GO UP / GO DOWN سے کیمرہ خود سیڑھیوں پر چلتا ہے۔</p>
   <p style="color:#7a4a12"><b>نوٹ:</b> یہ تصوراتی (concept) ماڈل ہے — پیمائشیں V19 نقشے کی ہیں، تعمیراتی ڈرائنگ نہیں۔ سیڑھیوں کے نیچے سر کی اونچائی: <b>NOT VERIFIED</b> — ساختی انجینئر تصدیق کرے گا۔</p>
@@ -1069,9 +1072,10 @@ function setFloor(fk, instant){
 }
 // ---------- pointer controls ----------
 const walk = { pos: new THREE.Vector3(X(2.5), BASE.ground + 5.3, -4), yaw: Math.PI/2, pitch: 0 };
+let walkDest = null, walkStuckToastAt = 0;
 const keys = {};
 const pointers = new Map();
-let dragStart = null, pinchD = 0, pinchAnchor = null;
+let dragStart = null, pinchD = 0, pinchAnchor = null, pinchMid = null;
 function rayPlaneY(cx, cy, y){ const r = cvs.getBoundingClientRect(); const v = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); raycaster.setFromCamera(v, camera); const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y); const pt = new THREE.Vector3(); return raycaster.ray.intersectPlane(pl, pt) ? pt : null; }
 const cvs = renderer.domElement;
 cvs.addEventListener('contextmenu', e => e.preventDefault());
@@ -1079,7 +1083,7 @@ cvs.addEventListener('pointerdown', e => {
   cvs.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
   if(pointers.size === 1) dragStart = {x: e.clientX, y: e.clientY, t: performance.now(), moved: 0};
-  if(pointers.size === 2){ const p = [...pointers.values()]; pinchD = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y); pinchAnchor = rayPlaneY((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, camTarget.y); }
+  if(pointers.size === 2){ const p = [...pointers.values()]; pinchD = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y); pinchAnchor = rayPlaneY((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, camTarget.y); pinchMid = { x:(p[0].x + p[1].x) / 2, y:(p[0].y + p[1].y) / 2 }; }
 });
 cvs.addEventListener('pointermove', e => {
   if(!pointers.has(e.pointerId)) return;
@@ -1089,6 +1093,12 @@ cvs.addEventListener('pointermove', e => {
   if(state.journey) return;
   if(pointers.size === 2){
     const p = [...pointers.values()]; const d = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y);
+    const mid = { x:(p[0].x + p[1].x) / 2, y:(p[0].y + p[1].y) / 2 };
+    if(pinchMid && state.mode !== 'walk'){
+      const mdx = mid.x - pinchMid.x, mdy = mid.y - pinchMid.y;
+      if(Math.abs(mdx) + Math.abs(mdy) > 0.5){ const s = orb.sph.radius * 0.0016; const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0); const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1); const y0 = camTarget.y; camTarget.addScaledVector(right, -mdx * s).addScaledVector(up, mdy * s); camTarget.y = y0; applyCam(); pinchAnchor = rayPlaneY(mid.x, mid.y, camTarget.y); }
+    }
+    pinchMid = mid;
     if(pinchD > 0 && state.mode !== 'walk'){
       orb.sph.radius = Math.max(1.2, Math.min(300, orb.sph.radius * pinchD / d)); applyCam();
       if(pinchAnchor){ const now = rayPlaneY((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, camTarget.y); if(now){ camTarget.add(pinchAnchor.clone().sub(now)); applyCam(); } }
@@ -1113,7 +1123,7 @@ cvs.addEventListener('pointermove', e => {
 cvs.addEventListener('pointerup', e => {
   pointers.delete(e.pointerId);
   if(dragStart && dragStart.moved < 6 && performance.now() - dragStart.t < 500 && !state.journey) handleClick(e);
-  if(pointers.size === 0) dragStart = null;
+  if(pointers.size === 0){ dragStart = null; pinchMid = null; }
 });
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
@@ -1149,6 +1159,20 @@ function stepWalk(dt){
   if(keys.KeyS || keys.ArrowDown) mv.sub(F);
   if(keys.KeyD || keys.ArrowRight) mv.add(R);
   if(keys.KeyA || keys.ArrowLeft) mv.sub(R);
+  if(mv.lengthSq() > 0) walkDest = null;
+  if(walkDest && mv.lengthSq() === 0){
+    const dx = walkDest.x - walk.pos.x, dz = walkDest.z - walk.pos.z, dist = Math.hypot(dx, dz);
+    if(dist < 0.7){ walkDest = null; }
+    else {
+      const tyaw = Math.atan2(dx, dz); let dy = tyaw - walk.yaw; while(dy > Math.PI) dy -= 2 * Math.PI; while(dy < -Math.PI) dy += 2 * Math.PI;
+      walk.yaw += Math.max(-6 * dt, Math.min(6 * dt, dy));
+      const step = Math.min(dist, 9 * dt), ux = dx / dist, uz = dz / dist, fk2 = state.walkFloor;
+      const ox = walk.pos.x, oz = walk.pos.z;
+      if(!collide(walk.pos.x + ux * step, walk.pos.z, fk2)) walk.pos.x += ux * step;
+      if(!collide(walk.pos.x, walk.pos.z + uz * step, fk2)) walk.pos.z += uz * step;
+      if(Math.abs(walk.pos.x - ox) < 0.001 && Math.abs(walk.pos.z - oz) < 0.001){ walkDest = null; if(performance.now() - walkStuckToastAt > 4000){ walkStuckToastAt = performance.now(); toast('راستہ بند ہے — دروازے کے سامنے آ کر دوبارہ ٹیپ کریں'); } }
+    }
+  }
   if(mv.lengthSq() > 0){
     mv.normalize().multiplyScalar(sp * dt);
     const fk = state.walkFloor;
@@ -1177,6 +1201,13 @@ function rayFloor(e){
   return hit ? hit.point : null;
 }
 function handleClick(e){
+  if(state.mode === 'walk'){
+    if($('tgDoors').checked){ const dh = rayFromEvent(e, DOORMESHES); if(dh && floorVisible(dh.object.userData.door.fk)){ showDoor(dh.object.userData.door); return; } }
+    const pt = rayFloor(e);
+    if(pt && Math.abs(pt.y - (BASE[state.walkFloor] + 0.3)) < 2.5){ walkDest = { x: pt.x, z: pt.z }; toast('🚶 وہاں جا رہے ہیں — رکنا ہو تو کوئی تیر/کلید دبائیں'); }
+    else toast('اسی منزل کی زمین پر ٹیپ کریں');
+    return;
+  }
   if(state.measure){ const pt = rayFloor(e); if(pt) measureClick(pt); return; }
   if(PING && PING.visible){ const ph = rayFromEvent(e, PINMESHES); if(ph){ showPin(ph.object.userData.pin); return; } }
   if($('tgDoors').checked){
@@ -1835,7 +1866,7 @@ let lastT = performance.now();
 function animate(now){
   requestAnimationFrame(animate);
   const rawDt = (now - lastT) / 1000;
-  const dt = Math.min(rawDt, 0.05); lastT = now;
+  const dt = Math.min(rawDt, 0.12); lastT = now;
   stepTweens(now);
   if(state.journey) stepJourney(rawDt);
   else if(state.mode === 'walk') stepWalk(dt);
@@ -3092,6 +3123,30 @@ buildFrame();
   document.addEventListener('keydown', e => { if(e.key === 'Escape') toggle(false); });
   window.MENU = { toggle, drawer };
   setTimeout(() => { if(!localStorage.getItem('ih_simple1')){ localStorage.setItem('ih_simple1', '1'); toast('☰ اب سارے کام ایک مینیو میں ہیں — گھسیٹیں · اسکرول کریں · کلک کریں'); } }, 1500);
+})();
+
+// ================= Explorer v18 — Gesture-plus (from the Gemini audit) =================
+// Two gestures adopted from the external UI audit, both serving the owner's
+// "everything by drag / scroll / click" order:
+//  1) LONG-PRESS a room -> that room's finish panel opens, room preselected.
+//  2) Two-finger DRAG pans the view (in part3's pinch branch).
+(function gesturePlus(){
+  let lpT = null, lpPt = null;
+  function fireLongPress(){
+    lpT = null;
+    if(!lpPt || state.mode === 'walk' || (window.STAGE && STAGE.on) || (window.PLACE && PLACE.ghost)) return;
+    const hit = rayFromEvent({ clientX: lpPt.x, clientY: lpPt.y }, PLATES);
+    const rec = hit && hit.object.userData.room;
+    if(!rec) return;
+    document.getElementById('finPanel').style.display = 'block';
+    const sel = document.getElementById('finRoom');
+    if(sel){ sel.value = rec.id; if(sel.onchange) sel.onchange(); }
+    toast('🎨 اسی کمرے کا فنش بدلیں — فرش و دیوار کا رنگ چنیں');
+  }
+  addEventListener('pointerdown', e => { if(e.target.closest && e.target.closest('button, select, input, textarea, a, .bar, #menuDrawer, [id$="Panel"], #info, #help, #stageBar')) return; lpPt = { x: e.clientX, y: e.clientY }; clearTimeout(lpT); lpT = setTimeout(fireLongPress, 560); });
+  addEventListener('pointermove', e => { if(lpPt && Math.hypot(e.clientX - lpPt.x, e.clientY - lpPt.y) > 8){ clearTimeout(lpT); lpT = null; } });
+  addEventListener('pointerup', () => { clearTimeout(lpT); lpT = null; });
+  addEventListener('pointercancel', () => { clearTimeout(lpT); lpT = null; });
 })();
 </script>
 </body></html>
