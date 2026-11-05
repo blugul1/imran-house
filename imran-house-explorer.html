@@ -1853,7 +1853,7 @@ window.__ready = true;
 // stage and are removed at the next — built_at / removed_at semantics.
 // Stages whose work has no geometry in a concept model are marked sch:1
 // (SCHEMATIC — مثالی مرحلہ) and say so in their text.
-const STAGE = { on:false, n:1, playing:false, timer:null, cats:{}, wallMats:{}, wallOrig:{}, wallHalf:{}, furnWet:{}, furnRoom:{}, furnAll:[], plateWet:{}, plateRoom:{}, props:null, shut:null, siteLate:[], treadOrig:null, clientItems:[] };
+const STAGE = { on:false, n:1, playing:false, timer:null, cats:{}, wallMats:{}, wallOrig:{}, wallHalf:{}, furnWet:{}, furnRoom:{}, furnFix:{}, furnAll:[], plateWet:{}, plateRoom:{}, props:null, shut:null, siteLate:[], treadOrig:null, clientItems:[] };
 
 function stageClassify(){
   for(const fk of ['basement','ground','first']){
@@ -1893,6 +1893,7 @@ function stageClassify(){
       STAGE.furnAll.push(ch);
     }
     STAGE.furnWet[fk] = wet; STAGE.furnRoom[fk] = room;
+    STAGE.furnFix[fk] = FURNG[fk].children.filter(c => c.isGroup);
     // floor plates: wet rooms first, then the rest
     const pw = [], pr = [];
     for(const pl of PLATES){ if(pl.userData.room && pl.userData.room.fk === fk){ (pl.userData.room.r[6] === 'kitchen' || pl.userData.room.r[6] === 'bath' ? pw : pr).push(pl); } }
@@ -1902,6 +1903,7 @@ function stageClassify(){
   // late site items: cars, gate leaves, porch canopies + posts — external works
   if(SITE){
     for(const gg of GATES) STAGE.siteLate.push(gg);
+    for(const ch of SITE.children){ if(ch.isGroup){ let bulb = false; ch.traverse(o => { if(o.isMesh && o.material === BULB) bulb = true; }); if(bulb) STAGE.siteLate.push(ch); } }
     for(const ch of SITE.children){
       if(ch.isGroup && Math.abs(ch.position.x + 41.7) < 0.6 && ch.position.y === GRADE) STAGE.siteLate.push(ch);
       else if(ch.isMesh && ch.position.x < -30 && ch.position.x > -52 && (ch.position.y > GRADE + 9 || (ch.position.y > GRADE + 4 && ch.position.y < GRADE + 6))) STAGE.siteLate.push(ch);
@@ -2011,6 +2013,7 @@ function stageVis(n){
     STAGE.plateRoom[fk].forEach(m => m.visible = n >= t.plate);
     STAGE.furnWet[fk].forEach(m => m.visible = n >= t.furnWet);
     STAGE.furnRoom[fk].forEach(m => m.visible = n >= t.furn);
+    STAGE.furnFix[fk].forEach(m => m.visible = n >= t.furn);
   }
   TREADM.color.setHex(n >= 37 ? 0xd8d2c4 : STAGE.treadOrig);
   if(ROOFG) ROOFG.visible = n >= 29;
@@ -2120,6 +2123,7 @@ function stageMode(on){
       STAGE.plateRoom[fk].forEach(m => m.visible = true);
     }
     STAGE.furnAll.forEach(m => m.visible = true);
+    for(const fk of ['basement','ground','first']) STAGE.furnFix[fk].forEach(m => m.visible = true);
     TREADM.color.setHex(STAGE.treadOrig);
     STAGE.props.group.visible = false;
     for(const k in STAGE.shut) STAGE.shut[k].visible = false;
@@ -2684,6 +2688,61 @@ buildFrame();
     if(!STAGE.on){ OBJ.beams.visible = OBJ.showFrame; OBJ.bands.visible = OBJ.showFrame; }
     e.target.textContent = OBJ.showFrame ? 'بیم و بینڈ چھپائیں' : 'بیم و بینڈ دکھائیں';
   };
+})();
+
+// ================= Explorer v13 — Mobile layer =================
+// Owner's verdict (5 Nov 2026): "ماڈل موبائل یوزر فرینڈلی بالکل نہیں ہے".
+// On narrow screens: the top bar becomes ONE swipeable row, the left panel
+// becomes a drawer (☰ button), info/panels become bottom sheets, the
+// minimap shrinks, the compass strip hides, and the stage bar compacts.
+// Desktop layout is untouched.
+(function mobileLayer(){
+  const css = `
+  #app canvas{ touch-action:none; }
+  #mNavBtn{ display:none; }
+  @media (max-width:820px){
+    .bar{ flex-wrap:nowrap !important; overflow-x:auto; overflow-y:hidden; padding:6px 8px !important; gap:6px !important; scrollbar-width:none; }
+    .bar::-webkit-scrollbar{ display:none; }
+    .bar .ttl{ font-size:11.5px !important; white-space:nowrap; flex:0 0 auto; margin-right:0 !important; }
+    .bar .ttl small{ display:none !important; }
+    .bar .grp{ flex:0 0 auto; padding:3px !important; }
+    .bar .grp .cap{ display:none !important; }
+    .bar button{ flex:0 0 auto; padding:8px 10px !important; font-size:12.5px !important; }
+    #btnStairs{ font-size:12.5px !important; padding:9px 12px !important; }
+    #mNavBtn{ display:block; position:fixed; top:56px; right:10px; z-index:67; background:#3DAB94; color:#04231b; font:700 14px system-ui; border-radius:999px; padding:10px 16px; box-shadow:0 6px 18px rgba(10,20,40,.35); }
+    #left{ position:fixed !important; top:52px !important; bottom:0 !important; left:0 !important; width:min(80vw,300px) !important; max-height:none !important; border-radius:0 14px 14px 0 !important; transform:translateX(-108%); transition:transform .25s ease; z-index:66 !important; }
+    body.mnav #left{ transform:none; box-shadow:12px 0 34px rgba(10,20,40,.35); }
+    #info{ top:auto !important; bottom:8px !important; left:8px !important; right:8px !important; width:auto !important; max-height:44vh !important; z-index:66 !important; }
+    #mapwrap{ transform:scale(.58); transform-origin:bottom left; bottom:4px !important; left:4px !important; }
+    body.stageon #mapwrap{ display:none !important; }
+    #compass{ display:none !important; }
+    #toast{ top:58px !important; width:92vw; text-align:center; font-size:12.5px !important; }
+    #finPanel,#chkPanel,#layPanel,#objPanel{ top:auto !important; bottom:8px !important; left:8px !important; right:8px !important; width:auto !important; max-height:64vh !important; overflow-y:auto !important; z-index:68 !important; }
+    #stageBar{ width:96vw !important; bottom:8px !important; padding:8px 10px 10px !important; }
+    #stTitle{ font-size:16.5px !important; }
+    #stDesc{ font-size:13.5px !important; line-height:2 !important; }
+    #gateBar{ white-space:normal !important; width:94vw !important; flex-wrap:wrap; justify-content:center; bottom:8px !important; }
+    .lab{ font-size:9.5px !important; padding:1px 4px !important; }
+    #showUi{ bottom:70px !important; }
+  }`;
+  const st = document.createElement('style');
+  st.textContent = css;
+  document.head.appendChild(st);
+  const b = document.createElement('button');
+  b.id = 'mNavBtn'; b.textContent = '☰ مینیو';
+  b.onclick = () => document.body.classList.toggle('mnav');
+  document.body.appendChild(b);
+  const cv = document.querySelector('#app canvas');
+  if(cv) cv.addEventListener('pointerdown', () => document.body.classList.remove('mnav'));
+  const left = $('left');
+  if(left) left.addEventListener('click', e => { if(e.target.tagName === 'BUTTON') setTimeout(() => document.body.classList.remove('mnav'), 380); });
+  if(window.innerWidth <= 820 && typeof panel === 'function'){
+    const _panel = panel;
+    panel = function(html){ _panel(html); if(html.indexOf('Where to') >= 0) $('info').style.display = 'none'; };
+    $('info').style.display = 'none';
+  }
+  const _sm = stageMode;
+  stageMode = function(on){ _sm(on); document.body.classList.toggle('stageon', !!on); };
 })();
 </script>
 </body></html>
