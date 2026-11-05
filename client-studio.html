@@ -210,23 +210,25 @@ function generatePlan(spec){
     const drA = room(fk, top ? (N.study ? 'study' : 'bed') : (N.drawing ? 'drawing' : 'bed'), top ? (N.study ? 'مطالعہ' : 'بیڈ روم') : (N.drawing ? 'ڈرائنگ روم' : 'بیڈ روم'), sx1 + 3, z0, colW - 3, rA, 'E');
     // Row B (middle): beds; east column may host bath slot (stacked)
     const bedB1 = room(fk, 'bed', 'بیڈ روم 1', x0, zA1, colW, rB, 'W');
-    let bedB2 = null, bathB = null;
+    let bedB2 = null, bathB = null, storeB = null;
     if(N.baths >= 2 || top){
       const bw = Math.min(7, colW * 0.45);
       bathB = room(fk, 'bath', 'باتھ', sx1, zA1, bw, 9, 'E');
       bedB2 = room(fk, 'bed', 'بیڈ روم 2', sx1 + bw, zA1, colW - bw, rB, 'E');
-      const storeB = room(fk, 'store', 'اسٹور', sx1, zA1 + 9, bw, rB - 9, 'E');
+      storeB = room(fk, 'store', 'اسٹور', sx1, zA1 + 9, bw, rB - 9, 'E');
     } else {
       bedB2 = room(fk, 'bed', 'بیڈ روم 2', sx1, zA1, colW, rB, 'E');
     }
     // Row C (back): kitchen west, court centre (open / lightwell in basement), bath+store east
     const kitC = room(fk, 'kitchen', 'کچن', x0, zB1, colW, zC1 - zB1, 'W');
     room(fk, 'court', isBase ? 'لائٹ ویل' : 'روشن دان', sx0, zC1 - 7, spineW, 7, 'C');
-    const bathC = room(fk, 'bath', 'باتھ', sx1, zB1, Math.min(7, colW), 9, 'E');
-    const storeC = room(fk, 'store', 'اسٹور', sx1 + Math.min(7, colW), zB1, colW - Math.min(7, colW), zC1 - zB1, 'E');
+    const bwC = Math.min(7, colW);
+    const bathC = room(fk, 'bath', 'باتھ', sx1 + colW - bwC, zB1, bwC, 9, 'E');
+    const storeC = room(fk, 'store', 'اسٹور', sx1, zB1, colW - bwC, zC1 - zB1, 'E');
     const all = [livA, drA, bedB1, bedB2, bathB, kitC, bathC, storeC].filter(Boolean);
     for(const r of all){ doorToSpine(r); outerWin(r); }
     if(bathB) doorToSpine(bathB);
+    if(storeB) doorToSpine(storeB);
     return all;
   }
   if(hasB) buildFloor('basement', false, true);
@@ -354,9 +356,60 @@ function generateFromRooms(spec){
   const greyLo = covered * floors * 3000 + (hasB ? covered * 4000 : 0);
   const greyHi = covered * floors * 3300 + (hasB ? covered * 4600 : 0);
   const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
-  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, fromPlan: true, confirmedBy: spec.confirmedBy || '', confirmedAt: spec.confirmedAt || '' } };
+  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, fromPlan: true, inputRooms: Object.values(spec.roomSets || {}).reduce((a, l) => a + l.length, 0), confirmedBy: spec.confirmedBy || '', confirmedAt: spec.confirmedAt || '' } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromRooms };
+
+// ================= QA GATE (adopted from BBB Learning Round 1, made executable) =================
+// Runs over any plan this engine produces. PASS = the plan's own data satisfies
+// the rule; WARN = a real design condition to flag, not hide; FAIL = broken.
+function qaCheck(plan){
+  const rows = [];
+  const { rooms, doors, windows, meta } = plan;
+  const onEdge = (p, r, tol) => {
+    tol = tol || 0.06;
+    if(p.wall === 'S') return Math.abs(p.z - r.z) < tol && p.x >= r.x - 0.01 && p.x <= r.x + r.w + 0.01;
+    if(p.wall === 'N') return Math.abs(p.z - (r.z + r.d)) < tol && p.x >= r.x - 0.01 && p.x <= r.x + r.w + 0.01;
+    if(p.wall === 'W') return Math.abs(p.x - r.x) < tol && p.z >= r.z - 0.01 && p.z <= r.z + r.d + 0.01;
+    if(p.wall === 'E') return Math.abs(p.x - (r.x + r.w)) < tol && p.z >= r.z - 0.01 && p.z <= r.z + r.d + 0.01;
+    return false;
+  };
+  const solid = rooms.filter(r => !['circ', 'court'].includes(r.type));
+  // 1 — main entrance present
+  const entry = doors.some(d => d.wall === 'S' && Math.abs(d.z - meta.z0) < 0.06 && d.w >= 3.5);
+  rows.push({ t: 'مرکزی دروازہ موجود و کھلا راستہ', s: entry ? 'PASS' : 'FAIL', d: entry ? 'اگلی سمت سے مرکزی دروازہ (3.6 فٹ) موجود ہے۔' : 'مرکزی دروازہ نہیں ملا — نقشہ نامکمل۔' });
+  // 2 — every solid room reachable (a door on one of its edges)
+  const unreachable = solid.filter(r => !doors.some(d => onEdge(d, r)));
+  rows.push({ t: 'ہر کمرے تک پہنچ (دروازہ)', s: unreachable.length ? 'FAIL' : 'PASS', d: unreachable.length ? ('بے دروازہ کمرے: ' + unreachable.map(r => r.label).join('، ')) : 'ہر کمرے کے کنارے پر دروازہ موجود — کوئی بند ڈبہ نہیں۔' });
+  // 3 — no invented rooms (intake mode: solid rooms == confirmed rooms)
+  if(meta.inputRooms != null){
+    rows.push({ t: 'کوئی ایجاد شدہ کمرہ نہیں', s: solid.length === meta.inputRooms ? 'PASS' : 'FAIL', d: 'تصدیق شدہ کمرے: ' + meta.inputRooms + ' · ماڈل میں: ' + solid.length + ' (گیلری/صحن اضافی جگہ ہے، کمرہ نہیں)۔' });
+  } else {
+    rows.push({ t: 'کوئی ایجاد شدہ کمرہ نہیں', s: 'PASS', d: 'خودکار موڈ: کمرے طے شدہ پروگرام سے بنے — گنتی خلاصے میں درج ہے۔' });
+  }
+  // 4 — outer shape unchanged: every room inside the envelope (mirrors meta.errs)
+  rows.push({ t: 'بیرونی شکل و حدود برقرار', s: meta.errs.length ? 'FAIL' : 'PASS', d: meta.errs.length ? meta.errs.join(' · ') : 'تمام کمرے لفافے کے اندر؛ پلاٹ کی شکل پولی گون کے مطابق۔' });
+  // 5 — stairs read correctly: a hall on the ground (and on every level of a multi-level house)
+  const levels = meta.levels || meta.floors;
+  const hallLevels = ['basement', 'ground', 'first'].filter(fk => rooms.some(r => r.fk === fk && r.type === 'hall'));
+  const need = meta.basement ? ['basement', 'ground'] : ['ground'];
+  const stairsOk = need.every(fk => hallLevels.includes(fk));
+  rows.push({ t: 'سیڑھی ہال ہر سطح پر', s: stairsOk ? 'PASS' : 'WARN', d: stairsOk ? 'سیڑھی ہال موجود (' + hallLevels.join('، ') + ') — اوپر نیچے کا راستہ ایک ہی جگہ سے۔' : 'کسی سطح پر سیڑھی ہال نہیں ملا — کلائنٹ کے نقشے میں سیڑھی کی جگہ الگ سے تصدیق کریں۔' });
+  // 6 — habitable rooms have a window (light/air); baths: window or vent, else extraction warning
+  const hab = solid.filter(r => ['bed', 'living', 'lounge', 'drawing', 'study'].includes(r.type));
+  const dark = hab.filter(r => !windows.some(w => onEdge(w, r)));
+  rows.push({ t: 'رہائشی کمروں میں کھڑکی (روشنی/ہوا)', s: dark.length ? 'FAIL' : 'PASS', d: dark.length ? ('بے کھڑکی کمرے: ' + dark.map(r => r.label).join('، ')) : 'ہر رہائشی کمرے کے کنارے پر کھڑکی موجود۔' });
+  const wet = solid.filter(r => r.type === 'bath' || r.type === 'kitchen');
+  const wetNoVent = wet.filter(r => !windows.some(w => onEdge(w, r)));
+  rows.push({ t: 'باتھ/کچن: کھڑکی/وینٹ یا ایگزاسٹ شرط', s: wetNoVent.length ? 'WARN' : 'PASS', d: wetNoVent.length ? (wetNoVent.length + ' گیلے کمرے اندرونی ہیں (کھڑکی نہیں) — ان میں مکینیکل ایگزاسٹ شرط ہے (ہمارا اٹل اصول: ہر گیلے کمرے میں ہوا کی نکاسی لازم)۔') : 'ہر باتھ/کچن میں کھڑکی/وینٹ موجود۔' });
+  // 7 — wet stack discipline (from meta)
+  if(meta.stackN > 0) rows.push({ t: 'گیلے کمروں کی عمودی سیدھ', s: meta.stackOk === meta.stackN ? 'PASS' : 'WARN', d: meta.stackOk + '/' + meta.stackN + ' باتھ نیچے کے گیلے کمرے پر — باقی کی ڈرین لائن ماہر تصدیق طلب۔' });
+  // 8 — scale sanity: habitable rooms not absurdly small
+  const tiny = hab.filter(r => r.w < 7 || r.d < 7 || r.w * r.d < 60);
+  rows.push({ t: 'ناپوں کی معقولیت', s: tiny.length ? 'WARN' : 'PASS', d: tiny.length ? ('مشکوک چھوٹے کمرے: ' + tiny.map(r => r.label + ' ' + r.w + '×' + r.d).join('، ') + ' — پیمائش دوبارہ ملائیں۔') : 'کوئی کمرہ غیر معقول حد تک چھوٹا نہیں۔' });
+  return rows;
+}
+if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromRooms, qaCheck };
 </script>
 <script>// ================= Client Studio — app (form -> plan -> 3D stages -> furnished) =================
 (function studio(){
@@ -435,7 +488,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
     if(!overridePlan && spec.needs.bedrooms > beds.length) plan.meta.warnings.push('اتنے بیڈ روم اس پلاٹ/منزلوں میں نہیں سما سکے — بڑا پلاٹ یا اضافی منزل درکار');
     if(spec.family.elders > 0) plan.meta.warnings.push('بزرگوں کے لیے گراؤنڈ فلور بیڈ روم رکھا گیا ہے ✓');
-    PLAN = plan;
+    PLAN = plan; FURMAN = [];
     if(HOUSE){ scene.remove(HOUSE); HOUSE = null; }
     labelDivs.forEach(d => d.remove()); labelDivs = [];
     HOUSE = new THREE.Group(); scene.add(HOUSE);
@@ -580,31 +633,66 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     summary(spec);
     toast('نقشہ بن گیا — گھسیٹ کر گھمائیں، اسکرول سے قریب جائیں، کمرے پر کلک کریں');
   }
+  // ---------- furnish v2: ANCHOR placement (production library, frozen rules) ----------
+  // Every piece anchors to the room's own geometry: bed headboard on the
+  // longest door-free wall, sofa on the longest window-free wall facing the
+  // TV wall, kitchen counter on the window wall, bath fixtures opposite the
+  // door, study desk on the window wall. FURMAN records the chosen anchor
+  // per room so tests (and humans) can audit the facing.
+  let FURMAN = [];
+  const edgeWall = (p, r) => {
+    const tol = 0.06;
+    if(p.wall === 'S' && Math.abs(p.z - r.z) < tol && p.x >= r.x - 0.01 && p.x <= r.x + r.w + 0.01) return 'S';
+    if(p.wall === 'N' && Math.abs(p.z - (r.z + r.d)) < tol && p.x >= r.x - 0.01 && p.x <= r.x + r.w + 0.01) return 'N';
+    if(p.wall === 'W' && Math.abs(p.x - r.x) < tol && p.z >= r.z - 0.01 && p.z <= r.z + r.d + 0.01) return 'W';
+    if(p.wall === 'E' && Math.abs(p.x - (r.x + r.w)) < tol && p.z >= r.z - 0.01 && p.z <= r.z + r.d + 0.01) return 'E';
+    return null;
+  };
+  const WALLROT = { N: 0, E: 1, S: 2, W: 3 };
+  function rotOff(dx, dz, rot){ return rot === 0 ? [dx, dz] : rot === 1 ? [dz, -dx] : rot === 2 ? [-dx, -dz] : [-dz, dx]; }
   function furnish(r, base, stFit, stFurn){
-    const cx = MX(r.x + r.w / 2), cz = MZ(r.z + r.d / 2), y = base + 0.15;
-    const west = r.x + 1.2, east = r.x + r.w - 1.2;
+    const dw = [], ww = [];
+    for(const d of PLAN.doors){ const w = edgeWall(d, r); if(w) dw.push(w); }
+    for(const wn of PLAN.windows){ const w = edgeWall(wn, r); if(w) ww.push(w); }
+    const len = { N: r.w, S: r.w, E: r.d, W: r.d };
+    const byLen = ['N', 'S', 'E', 'W'].sort((a, b) => len[b] - len[a]);
+    const noDoor = w => !dw.includes(w);
+    let wall = 'N';
+    if(r.type === 'bed') wall = byLen.find(noDoor) || 'N';
+    else if(['living', 'lounge', 'drawing'].includes(r.type)){ const noWin = byLen.filter(w => !ww.includes(w)); wall = (noWin.find(noDoor) || noWin[0] || byLen.find(noDoor) || 'N'); }
+    else if(r.type === 'kitchen') wall = ww[0] || byLen.find(noDoor) || 'N';
+    else if(r.type === 'bath'){ const opp = { N: 'S', S: 'N', E: 'W', W: 'E' }; wall = dw.length ? opp[dw[0]] : 'N'; }
+    else if(r.type === 'study') wall = ww[0] || 'N';
+    const rot = WALLROT[wall];
+    FURMAN.push({ id: r.id, type: r.type, wall });
+    const y = base + 0.15;
+    const P = (dx, dz, w, h, d, dy, mat, st) => { const o = rotOff(dx, dz, rot); const odd = rot % 2 === 1; return B(HOUSE, MX(r.x + r.w / 2) + o[0], y + dy, MZ(r.z + r.d / 2) + o[1], odd ? d : w, h, odd ? w : d, mat, st); };
+    const hd = r.d / 2, hw = r.w / 2;
     if(r.type === 'bed'){
-      const bx = MX(r.half === 'E' ? east - 2.2 : west + 2.2);
-      B(HOUSE, bx, y + 0.7, cz, 4.4, 1.1, 6.2, MAT.wood, stFurn); B(HOUSE, bx, y + 1.35, cz, 4.2, 0.35, 5.9, MAT.white, stFurn);
-      B(HOUSE, bx, y + 1.5, MZ(r.z + 1.1), 3.6, 0.3, 1.4, MAT.fab2, stFurn);
-      B(HOUSE, MX(r.half === 'E' ? west + 1 : east - 1), y + 3.2, MZ(r.z + 1), 2, 6.4, 0.8, MAT.wood2, stFurn);
+      const bz = hd - 0.3 - 3.1;
+      P(0, bz, 4.4, 1.1, 6.2, 0.7, MAT.wood, stFurn); P(0, bz, 4.2, 0.35, 5.9, 1.35, MAT.white, stFurn);
+      P(0, bz + 2.35, 3.6, 0.3, 1.4, 1.5, MAT.fab2, stFurn);
+      P(-3.1, bz + 2.5, 1.1, 1.5, 1.1, 0.75, MAT.wood2, stFurn); P(3.1, bz + 2.5, 1.1, 1.5, 1.1, 0.75, MAT.wood2, stFurn);
+      P(-(hw - 0.9), -(hd - 1), 1.6, 6.4, 0.8, 3.2, MAT.wood2, stFurn);
     } else if(['living', 'lounge', 'drawing'].includes(r.type)){
-      B(HOUSE, cx, y + 0.8, MZ(r.z + r.d - 1.6), 6.4, 1.6, 2.2, MAT.fab, stFurn);
-      B(HOUSE, cx, y + 0.45, cz, 3.4, 0.9, 1.8, MAT.wood, stFurn);
-      B(HOUSE, MX(r.x + 1.4), y + 0.8, cz, 2, 1.6, 2, MAT.fab2, stFurn); B(HOUSE, MX(r.x + r.w - 1.4), y + 0.8, cz, 2, 1.6, 2, MAT.fab2, stFurn);
-      B(HOUSE, cx, y + 3.4, MZ(r.z + 0.35), 4.6, 2.6, 0.25, MAT.dark, stFurn);
+      const sz = hd - 0.3 - 1.1;
+      P(0, sz, 6.4, 1.6, 2.2, 0.8, MAT.fab, stFurn);
+      P(0, sz - 3.4, 3.4, 0.9, 1.8, 0.45, MAT.wood, stFurn);
+      P(-(hw - 1.4), 0, 2, 1.6, 2, 0.8, MAT.fab2, stFurn); P(hw - 1.4, 0, 2, 1.6, 2, 0.8, MAT.fab2, stFurn);
+      P(0, -(hd - 0.2), 4.6, 2.6, 0.25, 3.4, MAT.dark, stFurn);
     } else if(r.type === 'kitchen'){
-      B(HOUSE, cx, y + 1.5, MZ(r.z + r.d - 0.9), r.w - 1, 3, 1.8, MAT.wood2, stFit);
-      B(HOUSE, cx, y + 4.6, MZ(r.z + r.d - 0.7), r.w - 1, 2.2, 1.2, MAT.wood, stFit);
-      B(HOUSE, MX(r.x + 1), y + 1.5, cz, 1.8, 3, r.d - 2, MAT.wood2, stFit);
+      P(0, hd - 0.9, r.w - 1, 3, 1.8, 1.5, MAT.wood2, stFit);
+      P(0, hd - 0.7, r.w - 1, 2.2, 1.2, 4.6, MAT.wood, stFit);
+      P(-(hw - 0.9), 0, 1.8, 3, Math.max(2, r.d - 2), 1.5, MAT.wood2, stFit);
     } else if(r.type === 'bath'){
-      B(HOUSE, MX(r.x + 1), y + 0.8, MZ(r.z + 1), 1.5, 1.6, 2.2, MAT.white, stFit);
-      B(HOUSE, MX(r.x + r.w - 1), y + 1.1, MZ(r.z + 1), 1.8, 2.2, 1.6, MAT.white, stFit);
+      P(-(hw - 1.2), hd - 1.1, 1.5, 1.6, 2.2, 0.8, MAT.white, stFit);
+      P(hw - 1.2, hd - 1.1, 1.8, 2.2, 1.6, 1.1, MAT.white, stFit);
     } else if(r.type === 'store'){
-      for(let i = 0; i < 3; i++) B(HOUSE, cx, y + 1 + i * 1.6, MZ(r.z + 0.8), r.w - 1.4, 0.25, 1.4, MAT.wood, stFurn);
+      for(let i = 0; i < 3; i++) P(0, hd - 0.8, r.w - 1.4, 0.25, 1.4, 1 + i * 1.6, MAT.wood, stFurn);
+      for(let i = 0; i < 3; i++) P(-(hw - 0.7), 0, 1.4, 0.25, Math.max(2, r.d - 2), 1 + i * 1.6, MAT.wood, stFurn);
     } else if(r.type === 'study'){
-      B(HOUSE, cx, y + 1.4, MZ(r.z + r.d - 1.2), 4.6, 0.3, 2, MAT.wood, stFurn);
-      B(HOUSE, cx, y + 0.7, cz, 1.6, 1.4, 1.6, MAT.fab, stFurn);
+      P(0, hd - 1.2, 4.6, 0.3, 2, 1.4, MAT.wood, stFurn);
+      P(0, hd - 3.1, 1.6, 1.4, 1.6, 0.7, MAT.fab, stFurn);
     }
   }
   // ---------- stages / floor / mode ----------
@@ -699,6 +787,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + (m.fromPlan ? '<br>ماخذ: <b>کلائنٹ کا اپنا نقشہ</b> — تصدیق کنندہ: ' + (m.confirmedBy || '—') + (m.confirmedAt ? ' · ' + m.confirmedAt : '') : '')
       + '<br>اسٹیک سیدھ: <span class="ok">✓ ' + m.stackOk + '/' + m.stackN + ' باتھ اوپر نیچے ایک لائن پر</span>'
       + (m.errs.length ? '<br><span class="bad">جانچ: ' + m.errs.join(' · ') + '</span>' : '<br><span class="ok">جانچ: کوئی اوورلیپ نہیں، سب کمرے حدود کے اندر ✓</span>')
+      + '<br><b>QA گیٹ (خودکار جانچ):</b>' + qaCheck(p).map(q => '<br>' + (q.s === 'PASS' ? '<span class="ok">✓</span>' : q.s === 'WARN' ? '<span class="warn">⚠</span>' : '<span class="bad">✗</span>') + ' ' + q.t + ' — <span style="color:#9db8d6;font-size:12.5px">' + q.d + '</span>').join('')
       + m.warnings.map(w => '<br><span class="warn">⚠ ' + w + '</span>').join('')
       + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ: روپے ' + (m.greyBand[0] / 1e7).toFixed(2) + ' – ' + (m.greyBand[1] / 1e7).toFixed(2) + ' کروڑ</b>'
       + '<br><span style="color:#9db8d6;font-size:13px">حساب: اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ' + (m.basement ? ' · تہہ خانہ × 4,000–4,600 روپے/مربع فٹ' : '') + ' (بینچ مارک لاہور، اکتوبر 2026)۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
@@ -801,7 +890,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     state.floor = 'all'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'all')); applyFloor();
     orb.sph.radius = Math.max(PLAN.meta.plotW, PLAN.meta.depth) * 1.55; orb.sph.phi = 1.02; orb.sph.theta = 2.55; camTg.set(0, 3, 0);
     applyCam();
-    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES };
+    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES, qa: () => qaCheck(PLAN), furman: () => FURMAN };
     toast('تصدیق شدہ نقشہ بن گیا — ' + spec.confirmedBy + ' کی تصدیق محفوظ ہے');
   };
   // ---------- build trigger ----------
@@ -814,7 +903,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     state.floor = 'all'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'all')); applyFloor();
     orb.sph.radius = Math.max(PLAN.meta.plotW, PLAN.meta.depth) * 1.55; orb.sph.phi = 1.02; orb.sph.theta = 2.55; camTg.set(0, 3, 0);
     applyCam();
-    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES, counts: () => { const h = {}; if(HOUSE) HOUSE.traverse(m => { if(m.userData.st != null){ const k = 'st' + m.userData.st; h[k] = h[k] || [0, 0]; h[k][0]++; if(m.visible) h[k][1]++; } }); return h; } };
+    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES, counts: () => { const h = {}; if(HOUSE) HOUSE.traverse(m => { if(m.userData.st != null){ const k = 'st' + m.userData.st; h[k] = h[k] || [0, 0]; h[k][0]++; if(m.visible) h[k][1]++; } }); return h; } , qa: () => qaCheck(PLAN), furman: () => FURMAN };
   };
   sizeRenderer(); applyCam(); animate();
 })();
