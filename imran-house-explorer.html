@@ -2814,5 +2814,49 @@ buildFrame();
   setInterval(() => { if(STAGE.clientItems.length > baseItems) complete('place'); }, 1500);
   window.MISS = { complete, done: () => done };
 })();
+
+// ================= Explorer v13 — Game layer 2: Life & motion =================
+// A «زندگی · Life» toggle: ceiling fans actually spin (the blade meshes from
+// fanAt, rotated about their own hub centres) and the light slowly cycles
+// day → evening → day through the existing dusk system. Nothing geometric
+// changes; turning Life off restores the calm day view.
+(function lifeLayer(){
+  const rotors = [];
+  for(const fk of ['basement','ground','first']){
+    for(const grp of FURNG[fk].children){
+      if(!grp.isGroup) continue;
+      for(const m of grp.children){
+        if(m.isMesh && m.geometry && m.geometry.type === 'BoxGeometry' && m.geometry.parameters && Math.abs(m.geometry.parameters.width - 5.6) < 0.01) rotors.push(m);
+      }
+    }
+  }
+  const LIFE = { on:false, cycle:null };
+  const b = document.createElement('button');
+  b.id = 'lifeBtn'; b.textContent = '🌀 زندگی · Life';
+  document.querySelector('.bar').appendChild(b);
+  // Frame-driven spin (delta-timed): a setInterval starves under the WebGL
+  // render loop, so the fans ride the same rAF clock as the renderer.
+  let lastT = performance.now();
+  (function spinLoop(now){
+    requestAnimationFrame(spinLoop);
+    const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+    if(!LIFE.on) return;
+    for(const m of rotors) m.rotation.y += dt * 5.0;
+  })(lastT);
+  function setLife(on){
+    LIFE.on = on;
+    b.classList.toggle('on', on);
+    clearInterval(LIFE.cycle); LIFE.cycle = null;
+    if(on){
+      toast('🌀 زندگی آن — پنکھے چل پڑے، روشنی شام کی طرف ڈھلے گی');
+      LIFE.cycle = setInterval(() => setDusk(!state.dusk), 26000);
+    } else {
+      if(state.dusk) setDusk(false);
+      toast('زندگی آف — پرسکون دن کا منظر');
+    }
+  }
+  b.onclick = () => setLife(!LIFE.on);
+  window.LIFE = { isOn: () => LIFE.on, rotors, setLife };
+})();
 </script>
 </body></html>
