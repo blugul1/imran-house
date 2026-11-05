@@ -3130,12 +3130,17 @@ buildFrame();
 // "everything by drag / scroll / click" order:
 //  1) LONG-PRESS a room -> that room's finish panel opens, room preselected.
 //  2) Two-finger DRAG pans the view (in part3's pinch branch).
+// Long-press timing is driven by the rAF loop, NOT setTimeout: under the WebGL
+// render load a bare timer fires far too late (measured in the headless rig:
+// setTimeout(560) landed at ~1586 ms, an rAF poll crossed 560 at ~1094 ms) —
+// the same starvation lesson as the fans (part13). Guards read STAGE/PLACE via
+// typeof: both are lexical consts, so window.STAGE/window.PLACE are undefined
+// and the old window.* guards never actually blocked anything.
 (function gesturePlus(){
-  let lpT = null, lpPt = null;
-  function fireLongPress(){
-    lpT = null;
-    if(!lpPt || state.mode === 'walk' || (window.STAGE && STAGE.on) || (window.PLACE && PLACE.ghost)) return;
-    const hit = rayFromEvent({ clientX: lpPt.x, clientY: lpPt.y }, PLATES);
+  let lp = null; // {x, y, t0} while a press is being held
+  function fireLongPress(pt){
+    if(state.mode === 'walk' || (typeof STAGE !== 'undefined' && STAGE.on) || (typeof PLACE !== 'undefined' && PLACE.ghost)) return;
+    const hit = rayFromEvent({ clientX: pt.x, clientY: pt.y }, PLATES);
     const rec = hit && hit.object.userData.room;
     if(!rec) return;
     document.getElementById('finPanel').style.display = 'block';
@@ -3143,10 +3148,14 @@ buildFrame();
     if(sel){ sel.value = rec.id; if(sel.onchange) sel.onchange(); }
     toast('🎨 اسی کمرے کا فنش بدلیں — فرش و دیوار کا رنگ چنیں');
   }
-  addEventListener('pointerdown', e => { if(e.target.closest && e.target.closest('button, select, input, textarea, a, .bar, #menuDrawer, [id$="Panel"], #info, #help, #stageBar')) return; lpPt = { x: e.clientX, y: e.clientY }; clearTimeout(lpT); lpT = setTimeout(fireLongPress, 560); });
-  addEventListener('pointermove', e => { if(lpPt && Math.hypot(e.clientX - lpPt.x, e.clientY - lpPt.y) > 8){ clearTimeout(lpT); lpT = null; } });
-  addEventListener('pointerup', () => { clearTimeout(lpT); lpT = null; });
-  addEventListener('pointercancel', () => { clearTimeout(lpT); lpT = null; });
+  addEventListener('pointerdown', e => { if(e.target.closest && e.target.closest('button, select, input, textarea, a, .bar, #menuDrawer, [id$="Panel"], #info, #help, #stageBar')) return; lp = { x: e.clientX, y: e.clientY, t0: performance.now() }; });
+  addEventListener('pointermove', e => { if(lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 8) lp = null; });
+  addEventListener('pointerup', () => { lp = null; });
+  addEventListener('pointercancel', () => { lp = null; });
+  (function lpLoop(){
+    requestAnimationFrame(lpLoop);
+    if(lp && performance.now() - lp.t0 >= 520){ const pt = lp; lp = null; fireLongPress(pt); }
+  })();
 })();
 </script>
 </body></html>
