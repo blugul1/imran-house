@@ -42,6 +42,11 @@
   #sumPanel{position:fixed;top:64px;inset-inline-end:10px;width:min(430px,92vw);max-height:80vh;overflow-y:auto;background:rgba(10,22,44,.97);border:1px solid #3dab94;border-radius:14px;padding:12px 16px;z-index:80;display:none;line-height:2.05}
   .lbl{position:absolute;transform:translate(-50%,-50%);background:rgba(8,18,38,.82);color:#eaf3ef;font-size:11.5px;padding:1px 8px;border-radius:8px;pointer-events:none;white-space:nowrap;line-height:1.9}
   .warn{color:#ffcf9e}.ok{color:#8fd8c8}.bad{color:#ff9e9e}
+  .prow{display:grid;grid-template-columns:1.25fr .65fr .65fr auto;gap:6px;margin:5px 0;align-items:end}
+  .prow select,.prow input{margin-top:0}
+  #buildBtn2{width:100%;background:#3dab94;color:#06231c;font-weight:800;font-size:17px;padding:12px;border-radius:14px;margin-top:8px}
+  #buildBtn2:disabled{opacity:.4;cursor:not-allowed}
+  #p_prev img,#p_prev embed{width:100%;max-height:330px;object-fit:contain;border-radius:10px;border:1px solid #2b4d82;background:#fff}
   #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#12305e;border:1px solid #3dab94;color:#eaf3ef;border-radius:12px;padding:8px 16px;z-index:99;display:none;line-height:1.9;max-width:92vw;text-align:center}
   @media (max-width:820px){ #menuDrawer{top:auto;bottom:0;inset-inline:0;width:auto;max-height:72vh;border-radius:16px 16px 0 0} .bar .ttl small{display:none} #info{bottom:76px} }
 </style>
@@ -61,6 +66,10 @@
     <button class="preset" data-preset="0">نمونہ ۱ · 5 مرلہ چھوٹا خاندان</button>
     <button class="preset" data-preset="1">نمونہ ۲ · 40×75 بڑا خاندان</button>
     <button class="preset" data-preset="2">نمونہ ۳ · 50×90 مشترکہ خاندان</button>
+  </div>
+  <div class="swrow" style="margin-top:4px">
+    <button id="modeAuto" class="on">🤖 خودکار نقشہ — پیمائش سے</button>
+    <button id="modePlan">📐 کلائنٹ کا اپنا نقشہ — تصویر + تصدیق</button>
   </div>
   <fieldset><legend>👤 کلائینٹ و جگہ</legend>
     <div class="grid">
@@ -87,6 +96,7 @@
       <label class="f">بزرگ<input type="number" id="f_elders" value="0" min="0" max="10"></label>
     </div>
   </fieldset>
+  <div id="autoWrap">
   <fieldset><legend>🧾 ضروریات</legend>
     <div class="grid">
       <label class="f">بیڈ روم (تعداد)<select id="f_beds"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
@@ -99,6 +109,23 @@
   </fieldset>
   <button id="buildBtn">🏠 نقشہ بنائیں — گھر بنتا دیکھیں</button>
   <p class="sub" style="margin-top:10px">یہ تصوراتی نقشہ ہے: پیمائشیں آپ کی دی ہوئی، ترتیب طے شدہ اصولوں سے۔ حتمی نقشہ و تعمیر سے پہلے ماہر (انجینئر/آرکیٹیکٹ) کی تصدیق لازم ہے۔</p>
+  </div>
+  <div id="planWrap" style="display:none">
+  <fieldset><legend>📐 کلائنٹ کا نقشہ — تصویر یہاں لگائیں</legend>
+    <input type="file" id="p_file" accept="image/*,.pdf" style="width:100%;color:#c8d9ee">
+    <div id="p_prev" style="margin-top:8px"></div>
+    <p class="sub">تصویر/فائل صرف آپ کے آلے پر کھلتی ہے — کہیں اپلوڈ نہیں ہوتی۔ نقشہ دیکھ کر نیچے ہر کمرے کی پیمائش جوں کی توں لکھیں؛ پھر تصدیق کریں۔ یہی اس پورے نظام کا اصول ہے: <b>مشین پڑھ سکتی ہے، مگر ہر پیمائش کی تصدیق انسان کرتا ہے۔</b></p>
+    <label class="chk"><input type="checkbox" id="p_basement"> اس نقشے میں تہہ خانہ بھی ہے</label>
+  </fieldset>
+  <div id="p_levels"></div>
+  <fieldset><legend>✍️ انسانی تصدیق — لازمی</legend>
+    <label class="f">تصدیق کنندہ کا نام<input type="text" id="p_by" placeholder="مثلاً محمد اقبال (ڈرافٹسمین)"></label>
+    <label class="chk"><input type="checkbox" id="p_confirm"> میں نے ہر پیمائش اصل نقشے سے ملا کر تصدیق کر دی ہے</label>
+    <div id="p_sum" style="font-size:13.5px;line-height:2;color:#c8d9ee"></div>
+  </fieldset>
+  <button id="buildBtn2" disabled>✓ تصدیق شدہ نقشہ بنائیں — گھر بنتا دیکھیں</button>
+  <p class="sub" style="margin-top:10px">یہ ماڈل تصدیق شدہ پیمائشوں کی سادہ قطار بندی دکھاتا ہے — اصل نقشے کی جیومیٹری کی حرف بحرف نقل نہیں۔ تعمیر سے پہلے ماہر تصدیق لازم ہے۔</p>
+  </div>
 </div>
 
 <div id="app" style="display:none"></div>
@@ -242,6 +269,94 @@ function generatePlan(spec){
   return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan };
+
+// ================= Client-plan intake: rooms the operator READ from the
+// client's own drawing and a HUMAN CONFIRMED, placed at their true sizes.
+// Layout = honest shelf rows inside the true envelope; leftover strips
+// become gallery / open court. This is a visualisation of confirmed
+// measurements — NOT a copy of the drawing's geometry.
+const TYPE_LABELS = { living: 'لیونگ روم', lounge: 'لاؤنج', drawing: 'ڈرائنگ روم', bed: 'بیڈ روم', bath: 'باتھ', kitchen: 'کچن', store: 'اسٹور', study: 'مطالعہ', hall: 'ہال' };
+function generateFromRooms(spec){
+  const P = spec.plot, FAM = spec.family;
+  const depth = (P.left + P.right) / 2;
+  const plotW = Math.max(P.front, P.back), minW = Math.min(P.front, P.back);
+  const plotArea = (P.front + P.back) / 2 * depth;
+  const hasB = !!spec.basement;
+  const gally = minW >= 34 ? 3.5 : 2.5;
+  const frontSet = spec.needs && spec.needs.carPorch ? 13 : 7;
+  const backSet = 6;
+  const x0 = gally, x1 = minW - gally, z0 = frontSet, z1 = depth - backSet;
+  const W = x1 - x0, D = z1 - z0;
+  const floors = spec.floors >= 2 ? 2 : 1;
+  const warnings = ['یہ ترتیب تصدیق شدہ پیمائشوں کی سادہ قطار بندی ہے — اصل نقشے کی جیومیٹری کی نقل نہیں؛ ماہر جائزہ لازم'];
+  if(hasB) warnings.push('تہہ خانہ: روشنی لائٹ ویل و اگلے حصے سے آئے گی — واٹر پروفنگ، نکاسی و ہوا کی ماہر تصدیق لازمی');
+  if(P.front !== P.back) warnings.push('ٹیڑھا (ٹریپیزوئیڈ) پلاٹ: ٹیڑھ مشرقی کنارے پر لی گئی ہے؛ کمرے اندرونی مستطیل میں ہیں');
+  const rooms = [], doors = [], windows = [], errs = [];
+  let uid = 0;
+  const room = (fk, type, label, x, z, w, d, half) => { const r = { id: 'q' + (uid++), fk, type, label, x, z, w, d, half }; rooms.push(r); return r; };
+  function packLevel(fk, list){
+    const counts = {};
+    let cx = x0, cz = z0, rowD = 0, rowRooms = [];
+    const closeRow = () => {
+      if(!rowRooms.length) return;
+      if(cx < x1 - 2){ for(const r of rowRooms) r._eastStrip = true; room(fk, 'circ', 'گیلری', cx, cz, x1 - cx, rowD, 'E'); }
+      cz += rowD; cx = x0; rowD = 0; rowRooms = [];
+    };
+    for(const inp of list){
+      const w = +inp.w || 0, d = +inp.d || 0;
+      if(!(w > 0 && d > 0)){ errs.push((TYPE_LABELS[inp.type] || inp.type) + ': پیمائش نامکمل'); continue; }
+      if(w > W + 0.02){ errs.push((TYPE_LABELS[inp.type] || inp.type) + ' ' + w + ' فٹ — لفافے کی چوڑائی ' + W.toFixed(0) + ' فٹ سے بڑا'); continue; }
+      if(cx + w > x1 + 0.02) closeRow();
+      if(cz + d > z1 + 0.02){ errs.push((TYPE_LABELS[inp.type] || inp.type) + ': گہرائی میں جگہ ختم — کمرے نہیں سما سکے'); continue; }
+      counts[inp.type] = (counts[inp.type] || 0) + 1;
+      const label = (TYPE_LABELS[inp.type] || inp.type) + (list.filter(x => x.type === inp.type).length > 1 ? ' ' + counts[inp.type] : '');
+      const r = room(fk, inp.type, label, cx, cz, w, d, cx + w / 2 <= (x0 + x1) / 2 ? 'W' : 'E');
+      r._rowFirst = rowRooms.length === 0; r._cz = cz;
+      rowRooms.push(r); cx += w; rowD = Math.max(rowD, d);
+    }
+    closeRow();
+    if(cz < z1 - 0.5){ const dd = z1 - cz; room(fk, dd >= 5 ? 'court' : 'circ', dd >= 5 ? 'کھلا صحن' : 'گیلری', x0, cz, W, dd, 'C'); }
+    // doors: east edge if the row has a gallery strip, else south edge (not on
+    // the front row), else north edge; windows on envelope edges
+    for(const r of rooms.filter(x => x.fk === fk && !['circ', 'court'].includes(x.type))){
+      if(r._eastStrip) doors.push({ x: r.x + r.w, z: r.z + Math.min(3, r.d / 2), wall: 'E', w: 3 });
+      else if(r.z > z0 + 0.02) doors.push({ x: r.x + r.w / 2, z: r.z, wall: 'S', w: 3 });
+      else doors.push({ x: r.x + r.w / 2, z: r.z + r.d, wall: 'N', w: 3 });
+      if(r.x <= x0 + 0.01) windows.push({ x: r.x, z: r.z + r.d / 2, wall: 'W', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath' });
+      if(r.x + r.w >= x1 - 0.01) windows.push({ x: r.x + r.w, z: r.z + r.d / 2, wall: 'E', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath' });
+      if(r.z <= z0 + 0.01) windows.push({ x: r.x + r.w / 2, z: r.z, wall: 'S', w: 4.5, vent: false });
+      if(r.z + r.d >= z1 - 0.01) windows.push({ x: r.x + r.w / 2, z: r.z + r.d, wall: 'N', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath' });
+      delete r._eastStrip; delete r._rowFirst; delete r._cz;
+    }
+  }
+  const sets = spec.roomSets || {};
+  if(hasB) packLevel('basement', sets.basement || []);
+  packLevel('ground', sets.ground || []);
+  if(floors === 2) packLevel('first', sets.first || []);
+  doors.push({ x: (x0 + x1) / 2, z: z0, wall: 'S', w: 3.6 }); // main entrance
+  // overlap validation (packing guarantees it, but verify — trust nothing)
+  for(const fk of ['basement', 'ground', 'first']){
+    const rs = rooms.filter(r => r.fk === fk);
+    for(let i = 0; i < rs.length; i++) for(let j = i + 1; j < rs.length; j++){
+      const a = rs[i], b = rs[j];
+      const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), oz = Math.min(a.z + a.d, b.z + b.d) - Math.max(a.z, b.z);
+      if(ox > 0.05 && oz > 0.05) errs.push(a.id + '×' + b.id + ' اوورلیپ');
+    }
+  }
+  let stackOk = 0, stackN = 0;
+  const pairs = [['first', 'ground']]; if(hasB) pairs.push(['ground', 'basement']);
+  for(const [up, lo] of pairs) for(const b of rooms.filter(r => r.fk === up && r.type === 'bath')){
+    stackN++;
+    const cx = b.x + b.w / 2, cz = b.z + b.d / 2;
+    if(rooms.some(r => r.fk === lo && (r.type === 'bath' || r.type === 'kitchen') && cx >= r.x && cx <= r.x + r.w && cz >= r.z && cz <= r.z + r.d)) stackOk++;
+  }
+  const covered = W * D, levels = floors + (hasB ? 1 : 0);
+  const greyLo = covered * floors * 3000 + (hasB ? covered * 4000 : 0);
+  const greyHi = covered * floors * 3300 + (hasB ? covered * 4600 : 0);
+  const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
+  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, fromPlan: true, confirmedBy: spec.confirmedBy || '', confirmedAt: spec.confirmedAt || '' } };
+}
+if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromRooms };
 </script>
 <script>// ================= Client Studio — app (form -> plan -> 3D stages -> furnished) =================
 (function studio(){
@@ -310,15 +425,15 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
   const MX = x => x - PLAN.meta.plotW / 2, MZ = z => z - PLAN.meta.depth / 2;
   function B(parent, x, y, z, w, h, d, mat, st){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if(st != null) m.userData.st = st; parent.add(m); return m; }
   // ---------- build the house ----------
-  function buildHouse(spec){
-    const plan = generatePlan(spec);
-    // bedroom count honour: relabel surplus beds (study first if wanted, else store)
+  function buildHouse(spec, overridePlan){
+    const plan = overridePlan || generatePlan(spec);
+    // bedroom count honour (auto mode only — a confirmed plan is never relabelled)
     let beds = plan.rooms.filter(r => r.type === 'bed');
-    if(spec.needs.bedrooms < beds.length){
+    if(!overridePlan && spec.needs.bedrooms < beds.length){
       const surplus = beds.slice(spec.needs.bedrooms).reverse();
       for(const r of surplus){ if(spec.needs.study && !plan.rooms.some(x => x.type === 'study')){ r.type = 'study'; r.label = 'مطالعہ'; } else { r.type = 'store'; r.label = 'اسٹور'; } }
     }
-    if(spec.needs.bedrooms > beds.length) plan.meta.warnings.push('اتنے بیڈ روم اس پلاٹ/منزلوں میں نہیں سما سکے — بڑا پلاٹ یا اضافی منزل درکار');
+    if(!overridePlan && spec.needs.bedrooms > beds.length) plan.meta.warnings.push('اتنے بیڈ روم اس پلاٹ/منزلوں میں نہیں سما سکے — بڑا پلاٹ یا اضافی منزل درکار');
     if(spec.family.elders > 0) plan.meta.warnings.push('بزرگوں کے لیے گراؤنڈ فلور بیڈ روم رکھا گیا ہے ✓');
     PLAN = plan;
     if(HOUSE){ scene.remove(HOUSE); HOUSE = null; }
@@ -444,7 +559,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     B(HOUSE, MX(x0), ry + 1.1, MZ((z0 + z1) / 2), 0.5, 2.2, D, MAT.plaster, stRoof); B(HOUSE, MX(x1), ry + 1.1, MZ((z0 + z1) / 2), 0.5, 2.2, D, MAT.plaster, stRoof);
     // porch + car
     if(spec.needs.carPorch){
-      const hx = plan.rooms.find(r => r.type === 'hall');
+      const hx = plan.rooms.find(r => r.fk === 'ground' && r.type === 'hall') || plan.rooms.find(r => r.type === 'hall') || plan.rooms.find(r => r.fk === 'ground');
       const pcx = MX(hx.x + hx.w / 2), pz0 = MZ(1), pz1 = MZ(plan.meta.z0 - 0.5);
       B(HOUSE, pcx, 0.15, (pz0 + pz1) / 2, hx.w + 6, 0.3, Math.abs(pz1 - pz0), MAT.conc, stFrame1);
       B(HOUSE, pcx - hx.w / 2 - 2, 5, pz0 + 0.6, 0.9, 10, 0.9, MAT.conc, stFrame1); B(HOUSE, pcx + hx.w / 2 + 2, 5, pz0 + 0.6, 0.9, 10, 0.9, MAT.conc, stFrame1);
@@ -581,6 +696,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
       + '<br>پروگرام: بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen') + ' · لیونگ/لاؤنج ' + (cnt('living') + cnt('lounge')) + ' · اسٹور ' + cnt('store')
       + '<br>اہلِ خانہ: ' + m.familyTotal + ' افراد'
+      + (m.fromPlan ? '<br>ماخذ: <b>کلائنٹ کا اپنا نقشہ</b> — تصدیق کنندہ: ' + (m.confirmedBy || '—') + (m.confirmedAt ? ' · ' + m.confirmedAt : '') : '')
       + '<br>اسٹیک سیدھ: <span class="ok">✓ ' + m.stackOk + '/' + m.stackN + ' باتھ اوپر نیچے ایک لائن پر</span>'
       + (m.errs.length ? '<br><span class="bad">جانچ: ' + m.errs.join(' · ') + '</span>' : '<br><span class="ok">جانچ: کوئی اوورلیپ نہیں، سب کمرے حدود کے اندر ✓</span>')
       + m.warnings.map(w => '<br><span class="warn">⚠ ' + w + '</span>').join('')
@@ -603,6 +719,91 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     }
     renderer.render(scene, camera);
   }
+  // ---------- client-plan intake (photo + read + HUMAN CONFIRM) ----------
+  const PTYPES = [ ['living', 'لیونگ روم', 16, 18], ['lounge', 'لاؤنج', 16, 18], ['drawing', 'ڈرائنگ روم', 14, 16], ['bed', 'بیڈ روم', 13, 15], ['bath', 'باتھ', 7, 9], ['kitchen', 'کچن', 11, 13], ['store', 'اسٹور', 8, 10], ['study', 'مطالعہ', 10, 12], ['hall', 'ہال', 10, 14] ];
+  const PDEF = { ground: ['living', 'hall', 'bed', 'bath', 'kitchen'], first: ['lounge', 'bed', 'bath'], basement: ['drawing', 'bed', 'bath', 'kitchen'] };
+  const PLVL = { basement: 'تہہ خانہ', ground: 'گراؤنڈ فلور', first: 'پہلی منزل' };
+  let planMode = false;
+  function prow(fk, type){
+    const t = PTYPES.find(x => x[0] === type) || PTYPES[0];
+    const div = document.createElement('div'); div.className = 'prow';
+    div.innerHTML = '<label class="f">کمرہ<select class="p-type">' + PTYPES.map(x => '<option value="' + x[0] + '"' + (x[0] === type ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label>'
+      + '<label class="f">لمبائی (فٹ)<input type="number" class="p-w" value="' + t[2] + '" min="2" max="80" step="0.5"></label>'
+      + '<label class="f">گہرائی (فٹ)<input type="number" class="p-d" value="' + t[3] + '" min="2" max="80" step="0.5"></label>'
+      + '<button type="button" class="p-del" title="حذف">✕</button>';
+    div.querySelector('.p-del').onclick = () => { div.remove(); gatePlan(); };
+    div.querySelector('.p-type').onchange = e => { const nt = PTYPES.find(x => x[0] === e.target.value); div.querySelector('.p-w').value = nt[2]; div.querySelector('.p-d').value = nt[3]; gatePlan(); };
+    div.addEventListener('input', gatePlan);
+    return div;
+  }
+  function buildLevels(){
+    const wrap = $('p_levels'); wrap.innerHTML = '';
+    const lv = [];
+    if($('p_basement').checked) lv.push('basement');
+    lv.push('ground');
+    if(+$('f_floors').value === 2) lv.push('first');
+    for(const fk of lv){
+      const fs = document.createElement('fieldset');
+      fs.innerHTML = '<legend>🏠 ' + PLVL[fk] + ' — کمرے (نقشے سے پڑھ کر)</legend><div class="rows"></div><button type="button" class="p-add">+ کمرہ شامل کریں</button>';
+      const rows = fs.querySelector('.rows');
+      for(const t of PDEF[fk]) rows.appendChild(prow(fk, t));
+      fs.querySelector('.p-add').onclick = () => { rows.appendChild(prow(fk, 'bed')); gatePlan(); };
+      fs.dataset.fk = fk;
+      wrap.appendChild(fs);
+    }
+    gatePlan();
+  }
+  function readRoomSets(){
+    const sets = {};
+    document.querySelectorAll('#p_levels fieldset').forEach(fs => {
+      sets[fs.dataset.fk] = [...fs.querySelectorAll('.prow')].map(r => ({ type: r.querySelector('.p-type').value, w: parseFloat(r.querySelector('.p-w').value) || 0, d: parseFloat(r.querySelector('.p-d').value) || 0 }));
+    });
+    return sets;
+  }
+  function gatePlan(){
+    if(!planMode) return;
+    const sets = readRoomSets();
+    let n = 0, area = 0;
+    for(const k in sets) for(const r of sets[k]){ n++; area += r.w * r.d; }
+    const front = parseFloat($('f_front').value) || 30, back = parseFloat($('f_back').value) || 30;
+    const depth = ((parseFloat($('f_left').value) || 60) + (parseFloat($('f_right').value) || 60)) / 2;
+    const minW = Math.min(front, back), gally = minW >= 34 ? 3.5 : 2.5;
+    const env = (minW - 2 * gally) * (depth - ($('f_porch').checked ? 13 : 7) - 6);
+    const levels = Object.keys(sets).length || 1;
+    $('p_sum').innerHTML = 'کمرے: <b>' + n + '</b> · کمروں کا مجموعی رقبہ ≈ ' + Math.round(area).toLocaleString() + ' مربع فٹ · فی منزل لفافہ ≈ ' + Math.round(env).toLocaleString() + ' مربع فٹ'
+      + (area / levels > env ? '<br><span class="warn">⚠ کمروں کا رقبہ لفافے سے بڑھ رہا ہے — پیمائشیں دوبارہ ملائیں؛ نہ سمانے والے کمرے بننے پر غلطی کے طور پر رکیں گے، خاموشی سے چھوٹے نہیں ہوں گے۔</span>' : '');
+    $('buildBtn2').disabled = !($('p_confirm').checked && $('p_by').value.trim().length >= 2 && n > 0);
+  }
+  $('modeAuto').onclick = () => { planMode = false; $('modeAuto').classList.add('on'); $('modePlan').classList.remove('on'); $('autoWrap').style.display = ''; $('planWrap').style.display = 'none'; };
+  $('modePlan').onclick = () => { planMode = true; $('modePlan').classList.add('on'); $('modeAuto').classList.remove('on'); $('autoWrap').style.display = 'none'; $('planWrap').style.display = ''; buildLevels(); };
+  $('p_file').addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const url = URL.createObjectURL(f);
+    $('p_prev').innerHTML = f.type === 'application/pdf' ? '<embed src="' + url + '" type="application/pdf">' : '<img src="' + url + '" alt="کلائنٹ کا نقشہ">';
+    toast('نقشہ لگ گیا — اب ہر کمرے کی پیمائش پڑھ کر لکھیں');
+  });
+  $('p_basement').addEventListener('change', buildLevels);
+  $('f_floors').addEventListener('change', () => { if(planMode) buildLevels(); });
+  $('p_confirm').addEventListener('change', gatePlan);
+  $('p_by').addEventListener('input', gatePlan);
+  $('buildBtn2').onclick = () => {
+    const spec = readSpec();
+    spec.basement = $('p_basement').checked;
+    spec.roomSets = readRoomSets();
+    spec.confirmedBy = $('p_by').value.trim();
+    spec.confirmedAt = new Date().toLocaleString('en-GB');
+    const plan = generateFromRooms(spec);
+    if(plan.meta.errs.length){ $('p_sum').innerHTML = '<span class="bad">رکاوٹ: ' + plan.meta.errs.join(' · ') + '</span><br>پیمائشیں اصل نقشے سے دوبارہ ملا کر درست کریں — غلط پیمائش پر گھر نہیں بنے گا۔'; toast('پیمائشوں میں رکاوٹ — نیچے تفصیل دیکھیں'); return; }
+    $('intake').style.display = 'none'; $('app').style.display = 'block';
+    $('menuBtn').style.display = ''; $('modeGrp').style.display = ''; $('floorGrp').style.display = ''; $('labels').style.display = '';
+    sizeRenderer();
+    buildHouse(spec, plan);
+    state.floor = 'all'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'all')); applyFloor();
+    orb.sph.radius = Math.max(PLAN.meta.plotW, PLAN.meta.depth) * 1.55; orb.sph.phi = 1.02; orb.sph.theta = 2.55; camTg.set(0, 3, 0);
+    applyCam();
+    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES };
+    toast('تصدیق شدہ نقشہ بن گیا — ' + spec.confirmedBy + ' کی تصدیق محفوظ ہے');
+  };
   // ---------- build trigger ----------
   $('buildBtn').onclick = () => {
     const spec = readSpec();
