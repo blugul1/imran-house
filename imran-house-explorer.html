@@ -3369,5 +3369,85 @@ buildFrame();
   renderBm();
   window.P2 = { search: doSearch, gotoRoom, shotData, bmCount: () => loadBm().length };
 })();
+
+// ================= Explorer P2 bundle 2 — section plane · marble veining =================
+// (Sun/time presets already ship in part14 — not duplicated here.)
+// Section: a draggable east-west cut through the MODEL view (renderer
+// clipping plane) — the plan mode keeps its own cut system, so the section
+// switches itself off there. Sun presets are one-tap wrappers over the
+// existing solar engine. Marble veining is a procedural canvas texture
+// applied only while the room's floor finish is «سفید ماربل».
+(function p2b(){
+  // ---------- movable section plane ----------
+  renderer.localClippingEnabled = true;
+  const secPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 40);
+  let secOn = false;
+  const drawer = document.getElementById('menuDrawer');
+  let secBtn = null, secSlider = null;
+  function secApply(){
+    renderer.clippingPlanes = secOn ? [secPlane] : [];
+    if(secBtn) secBtn.textContent = secOn ? '✂️ کٹاؤ (Section): کھلا ہے — بند کریں' : '✂️ کٹاؤ (Section): بند ہے — کھولیں';
+  }
+  if(drawer){
+    const sec = document.createElement('div');
+    sec.innerHTML = '<h4>✂️ کٹاؤ و اضافی فنش</h4>'
+      + '<button id="secBtn">✂️ کٹاؤ (Section): بند ہے — کھولیں</button>'
+      + '<div style="font-size:12.5px;color:#A9B8CC;line-height:1.9;padding:2px 2px 0">کٹاؤ کی جگہ (مشرق ← → مغرب):</div>'
+      + '<input id="secSlider" type="range" min="-36" max="40" step="0.5" value="40" style="width:100%">'
+      + '<button id="marbleNote">🪨 ماربل فنش میں قدرتی رگیں شامل ہیں — فنش پینل سے «سفید ماربل» چنیں</button>';
+    drawer.appendChild(sec);
+    secBtn = sec.querySelector('#secBtn');
+    secSlider = sec.querySelector('#secSlider');
+    secBtn.onclick = () => {
+      if(!secOn && state.mode === 'plan'){ toast('کٹاؤ ماڈل منظر میں چلتا ہے — پہلے ماڈل (Model) منتخب کریں'); return; }
+      secOn = !secOn; secApply();
+      if(secOn) drawer.classList.remove('open');
+    };
+    secSlider.addEventListener('input', e => { secPlane.constant = parseFloat(e.target.value); if(!secOn){ secOn = true; secApply(); } });
+    sec.querySelector('#marbleNote').onclick = () => { drawer.classList.remove('open'); const fb = document.getElementById('finBtn'); if(fb) fb.click(); };
+  }
+  const _setMode = setMode;
+  setMode = function(m, instant){ _setMode(m, instant); if(m === 'plan' && secOn){ secOn = false; secApply(); } };
+  // ---------- marble veining (procedural, only on the marble finish) ----------
+  function makeMarbleTexture(){
+    const c = document.createElement('canvas'); c.width = c.height = 512;
+    const g = c.getContext('2d');
+    g.fillStyle = '#eae6dc'; g.fillRect(0, 0, 512, 512);
+    for(let i = 0; i < 900; i++){ g.fillStyle = 'rgba(200,198,190,' + (Math.random() * 0.05) + ')'; g.fillRect(Math.random() * 512, Math.random() * 512, 22, 22); }
+    function vein(gold){
+      let x = Math.random() * 512, y = -10;
+      g.beginPath(); g.moveTo(x, y);
+      const steps = 14 + Math.random() * 10;
+      for(let i = 0; i < steps; i++){ x += (Math.random() - 0.5) * 74; y += 522 / steps; g.lineTo(x, y); }
+      g.strokeStyle = gold ? 'rgba(166,138,88,0.20)' : 'rgba(110,116,128,0.16)';
+      g.lineWidth = 2.6; g.stroke();
+      g.strokeStyle = gold ? 'rgba(150,122,74,0.30)' : 'rgba(96,102,114,0.30)';
+      g.lineWidth = 0.9; g.stroke();
+    }
+    for(let i = 0; i < 16; i++) vein(false);
+    for(let i = 0; i < 3; i++) vein(true);
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1.6, 1.6); tex.anisotropy = 4;
+    return tex;
+  }
+  const marbleTex = makeMarbleTexture();
+  function syncMarble(){
+    if(typeof FIN === 'undefined' || !FIN.room) return;
+    const rec = FIN.room;
+    for(const pl of PLATES){
+      if(pl.userData.room !== rec) continue;
+      const isMarble = pl.material.color.getHex() === 0xe9e5db;
+      if(isMarble && !pl.material.map){ pl.material.map = marbleTex; pl.material.needsUpdate = true; }
+      if(!isMarble && pl.material.map){ pl.material.map = null; pl.material.needsUpdate = true; }
+    }
+  }
+  document.addEventListener('click', e => {
+    if(e.target.closest && e.target.closest('#finPanel')) requestAnimationFrame(syncMarble);
+  }, true);
+  window.P2 = Object.assign(window.P2 || {}, {
+    sec: { on: () => { if(state.mode !== 'plan'){ secOn = true; secApply(); } }, off: () => { secOn = false; secApply(); }, set: v => { secPlane.constant = v; if(secSlider) secSlider.value = v; }, isOn: () => secOn, plane: () => secPlane },
+    marble: { tex: () => marbleTex, applied: () => PLATES.filter(pl => pl.material.map === marbleTex).length, sync: syncMarble }
+  });
+})();
 </script>
 </body></html>
