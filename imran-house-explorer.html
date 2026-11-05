@@ -2393,6 +2393,16 @@ function runChecks(){
     if(partner) aligned++;
   }
   out.push({ s: aligned === baths.length ? 'PASS' : 'NOT VERIFIED', t:'گیلے کمروں کی عمودی سیدھ (اسٹیک)', d: baths.length + ' میں سے ' + aligned + ' باتھ اوپر نیچے ایک ہی لائن (اسٹیک) پر ہیں۔ باقی 2 (گراؤنڈ جنوبی باتھ، تہہ خانے کا مہمان باتھ) کسی اسٹیک پر نہیں — ان کی ڈرین لائن پلمبنگ شیٹ سے تصدیق طلب ہے۔ یہ نقشے کے ڈیٹا کی جانچ ہے، پلمبنگ ڈرائنگ نہیں۔' });
+  // R9: wet-over-dry — a bath/kitchen centre should not land over a dry living room below
+  const okBelow = ['bath', 'kitchen', 'court', 'store', 'core', 'passage', 'gallery'];
+  const aboveMap = { ground: 'basement', first: 'ground' };
+  const flagged = [];
+  for(const fk of ['ground', 'first']) for(const r of ROOMS.filter(x => x.fk === fk && (x.r[6] === 'bath' || x.r[6] === 'kitchen'))){
+    const cx = (r.R.x0 + r.R.x1) / 2, cz = (r.R.z0 + r.R.z1) / 2;
+    const below = ROOMS.find(x => x.fk === aboveMap[fk] && cx >= x.R.x0 && cx <= x.R.x1 && cz >= x.R.z0 && cz <= x.R.z1);
+    if(!below || !okBelow.includes(below.r[6])) flagged.push(r.id + ' ← نیچے ' + (below ? below.id : 'کوئی کمرہ نہیں'));
+  }
+  out.push({ s: flagged.length ? 'NOT VERIFIED' : 'PASS', t:'گیلا کمرہ خشک کمرے کے اوپر؟', d: flagged.length ? ('توجہ طلب جوڑے (' + flagged.length + '): ' + flagged.join(' · ') + ' — ان کی ڈرین لائنیں بند شافٹ میں چلتی ہیں، لیکن لیک کا خطرہ خشک کمرے کے اوپر رہتا ہے؛ حتمی فیصلہ پلمبنگ شیٹ (S1/N1 لائن) سے ہو گا۔ یہ ڈیٹا جانچ ہے، پلمبنگ تصدیق نہیں۔') : 'کوئی گیلا کمرہ کسی خشک رہائشی کمرے کے اوپر نہیں — سب باتھ/کچن یا تو اسٹیک پر ہیں یا سروس جگہ کے اوپر۔' });
   // R8: headroom — honestly not verified in this model
   out.push({ s: 'NOT VERIFIED', t:'سیڑھی کے نیچے سر کی اونچائی', d:'ماڈل میں بیم کی اصل گہرائی شامل نہیں، اس لیے سر کی اونچائی یہاں تصدیق شدہ نہیں — یہ انجینئر کی ڈرائنگ سے طے ہو گی۔' });
   return out;
@@ -2859,7 +2869,7 @@ buildFrame();
     clearInterval(LIFE.cycle); LIFE.cycle = null;
     if(on){
       toast('🌀 زندگی آن — پنکھے چل پڑے، روشنی شام کی طرف ڈھلے گی');
-      LIFE.cycle = setInterval(() => setDusk(!state.dusk), 26000);
+      LIFE.cycle = setInterval(() => { if(window.SUN && window.SUN.active) return; setDusk(!state.dusk); }, 26000);
     } else {
       if(state.dusk) setDusk(false);
       toast('زندگی آف — پرسکون دن کا منظر');
@@ -2867,6 +2877,176 @@ buildFrame();
   }
   b.onclick = () => setLife(!LIFE.on);
   window.LIFE = { isOn: () => LIFE.on, rotors, setLife };
+})();
+
+// ================= Explorer v14 — Simulator layer 1: Sun & time =================
+// A real solar calculation for Bhimber (lat 32.975 N): pick the hour and the
+// sun moves, light warms/ cools, the sky follows. Approximate astronomy on
+// purpose — labelled an estimate, never a lux measurement (DIALux pending).
+(function sunLayer(){
+  const LAT = 32.975 * Math.PI / 180;
+  const SUN = { active:false, h: 11, playing:false, night:false };
+  const b = document.createElement('button');
+  b.id = 'sunBtn'; b.textContent = '☀️ وقت و سورج · Sun & Time';
+  document.querySelector('.bar').appendChild(b);
+  const panel = document.createElement('div');
+  panel.id = 'sunPanel'; panel.style.display = 'none';
+  panel.innerHTML = '<button class="fx" onclick="document.getElementById(\'sunPanel\').style.display=\'none\'">✕</button>'
+    + '<h3>☀️ دن کا وقت — سورج کہاں ہے؟</h3>'
+    + '<input type="range" id="sunSlider" min="5.5" max="19.5" step="0.05" value="11" style="width:100%">'
+    + '<div id="sunRead" style="font-weight:700;margin:6px 0"></div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    + '<button class="chip" data-h="7">🌅 صبح 7</button><button class="chip" data-h="10">🌤 10 بجے</button>'
+    + '<button class="chip" data-h="13">☀️ دوپہر 1</button><button class="chip" data-h="16">🌇 شام 4</button>'
+    + '<button class="chip" data-h="18.2">🌆 غروب</button><button class="chip" id="sunPlay">▶ وقت چلاؤ</button></div>'
+    + '<p class="dim" style="margin-top:8px">سورج کی سمت و بلندی کا تخمینی شمسی حساب (بھمبر، عرض بلد 32.98°) — کس کمرے میں کب دھوپ آتی ہے، اس کا اندازہ لگانے کے لیے۔ یہ لوکس (Lux) پیمائش نہیں؛ اصل روشنی جانچ DIALux سے ہو گی۔</p>';
+  document.body.appendChild(panel);
+  const slider = panel.querySelector('#sunSlider'), read = panel.querySelector('#sunRead');
+  function sunPos(h){
+    const now = new Date(); const doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 864e5);
+    const decl = -23.44 * Math.cos((2 * Math.PI / 365) * (doy + 10)) * Math.PI / 180;
+    const H = (h - 12) * 15 * Math.PI / 180;
+    const alt = Math.asin(Math.sin(LAT) * Math.sin(decl) + Math.cos(LAT) * Math.cos(decl) * Math.cos(H));
+    const az = Math.atan2(Math.sin(H), Math.cos(H) * Math.sin(LAT) - Math.tan(decl) * Math.cos(LAT)) + Math.PI;
+    return { alt, az };
+  }
+  const skyNight = new THREE.Color(0x141f38), skyDawn = new THREE.Color(0xf2c99a), skyDay = new THREE.Color(0xdcebf2), tmp = new THREE.Color();
+  const sunWarm = new THREE.Color(0xffb45e), sunWhite = new THREE.Color(0xffffff);
+  function dirWord(azDeg){ const w = ['شمال', 'شمال مشرق', 'مشرق', 'جنوب مشرق', 'جنوب', 'جنوب مغرب', 'مغرب', 'شمال مغرب']; return w[Math.round(azDeg / 45) % 8]; }
+  function fmtH(h){ let hh = Math.floor(h), mm = Math.round((h - hh) * 60); if(mm === 60){ hh++; mm = 0; } const per = hh < 12 ? 'صبح' : (hh < 17 ? 'دوپہر' : 'شام'); return per + ' ' + ((hh + 11) % 12 + 1) + ':' + String(mm).padStart(2, '0'); }
+  function setTime(h){
+    SUN.h = h; SUN.active = true;
+    const { alt, az } = sunPos(h);
+    const s = Math.sin(alt);
+    if(alt < -0.02){ if(!SUN.night){ SUN.night = true; setDusk(true); } read.textContent = '🌙 ' + fmtH(h) + ' — سورج غروب ہو چکا، شام/رات کا منظر'; slider.value = h; return; }
+    SUN.night = false;
+    if(state.dusk) setDusk(false);
+    const D = 170, ca = Math.cos(alt);
+    dl.position.set(-Math.sin(az) * ca * D, Math.max(6, s * D), -Math.cos(az) * ca * D);
+    dl.intensity = 0.12 + 0.85 * Math.pow(Math.max(0, s), 0.7);
+    dl.color.copy(sunWarm).lerp(sunWhite, Math.min(1, Math.max(0, s * 1.8)));
+    dl2.intensity = 0.32 * Math.max(0.15, s);
+    hemi.intensity = 0.55 + 0.62 * Math.max(0, s);
+    if(s < 0.12) tmp.copy(skyNight).lerp(skyDawn, (s + 0.05) / 0.17); else tmp.copy(skyDawn).lerp(skyDay, Math.min(1, (s - 0.12) / 0.4));
+    scene.background.copy(tmp); if(scene.fog) scene.fog.color.copy(tmp);
+    const azDeg = Math.round(az * 180 / Math.PI);
+    read.textContent = '🕐 ' + fmtH(h) + ' — سورج ' + dirWord(azDeg) + ' میں، بلندی ' + Math.max(0, Math.round(alt * 180 / Math.PI)) + '°';
+    slider.value = h;
+  }
+  slider.addEventListener('input', () => setTime(parseFloat(slider.value)));
+  panel.querySelectorAll('[data-h]').forEach(x => x.onclick = () => setTime(parseFloat(x.dataset.h)));
+  let lastT = performance.now();
+  (function playLoop(now){ requestAnimationFrame(playLoop); const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+    if(SUN.playing){ let h = SUN.h + dt / 7; if(h > 19.5) h = 5.5; setTime(h); } })(lastT);
+  const playBtn = panel.querySelector('#sunPlay');
+  playBtn.onclick = () => { SUN.playing = !SUN.playing; playBtn.textContent = SUN.playing ? '⏸ روکو' : '▶ وقت چلاؤ'; };
+  b.onclick = () => { const open = panel.style.display !== 'block'; panel.style.display = open ? 'block' : 'none'; if(open && !SUN.active) setTime(11); };
+  window.SUN = SUN; window.SUN.setTime = setTime;
+})();
+
+// ================= Explorer v15 — Simulator layer 2: Measure & Estimate =================
+// Quantities are MEASURED from the model itself (floor envelopes from the
+// floor groups, wall lengths from the model's wall segments, object counts
+// from the registry). Money is an ESTIMATE BAND from the documented Phase-3
+// benchmarks (Lahore, Oct 2026) — labelled as such, never a quote.
+(function estLayer(){
+  const b = document.createElement('button');
+  b.id = 'estBtn'; b.textContent = '📐 پیمائش و تخمینہ · Estimate';
+  document.querySelector('.bar').appendChild(b);
+  const panel = document.createElement('div');
+  panel.id = 'estPanel'; panel.style.display = 'none';
+  document.body.appendChild(panel);
+  const fmt = n => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const cr = v => (v / 1e7).toFixed(2) + ' کروڑ';
+  let grade = 'A';
+  const FACTOR = { 'B+':[1.52, 1.87], 'A':[1.73, 2.13], 'A+':[2.08, 2.63] };
+  function measure(){
+    const areas = {}, wallFt = {};
+    for(const fk of ['basement', 'ground', 'first']){
+      const bb = new THREE.Box3().setFromObject(FG[fk]);
+      areas[fk] = (bb.max.x - bb.min.x) * (bb.max.z - bb.min.z);
+      wallFt[fk] = WALLSEGS[fk].reduce((s, w) => s + Math.max(Math.abs(w.x1 - w.x0), Math.abs(w.z1 - w.z0)), 0);
+    }
+    return { areas, wallFt };
+  }
+  function render(){
+    const { areas, wallFt } = measure();
+    const totA = areas.basement + areas.ground + areas.first;
+    const greyLo = areas.basement * 4000 + (areas.ground + areas.first) * 3000;
+    const greyHi = areas.basement * 4600 + (areas.ground + areas.first) * 3300;
+    const greyMid = (greyLo + greyHi) / 2, f = FACTOR[grade];
+    const winSet = new Set(); for(const fk of ['ground', 'first']) for(const m of OBJ.winObjs[fk]) winSet.add(m.userData.winId); const wins = winSet.size;
+    const beams = OBJ.beams ? OBJ.beams.children.length : 0, bands = OBJ.bands ? OBJ.bands.children.length : 0;
+    panel.innerHTML = '<button class="fx" onclick="document.getElementById(\'estPanel\').style.display=\'none\'">✕</button>'
+      + '<h3>📐 پیمائش و تخمینہ</h3>'
+      + '<div style="background:#7a2d1e;color:#ffe9e2;border-radius:8px;padding:6px 10px;font-weight:700">یہ تخمینہ ہے — کوٹیشن نہیں</div>'
+      + '<b>ماڈل سے ناپا گیا (MODEL-MEASURED):</b>'
+      + '<br>ڈھکا رقبہ: تہہ خانہ ' + fmt(areas.basement) + ' · گراؤنڈ ' + fmt(areas.ground) + ' · پہلی منزل ' + fmt(areas.first) + ' · <b>کل ≈ ' + fmt(totA) + ' مربع فٹ</b>'
+      + '<br>دیواروں کی کل لمبائی ≈ ' + fmt(wallFt.basement + wallFt.ground + wallFt.first) + ' رننگ فٹ'
+      + '<br>کالم ' + OBJ.colCount + ' · بیم ' + beams + ' · لنٹل بینڈ ' + bands + ' · کھڑکیاں ' + wins + ' · دروازے ' + DOORRECS.length + ' (انٹرایکٹو؛ شیڈول 40) · کمرے ' + ROOMS.length + ' ریکارڈ · فرنیچر اشیاء ' + STAGE.furnAll.length
+      + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ:</b> <span style="font-size:17px"><b>روپے ' + cr(greyLo) + ' – ' + cr(greyHi) + '</b></span>'
+      + '<br><span class="dim">حساب: تہہ خانہ × 4,000–4,600 + اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ (بینچ مارک: لاہور، اکتوبر 2026 — بھمبر کے اصل ریٹس فیلڈ تصدیق کے منتظر)</span>'
+      + '<br>گرے میں حصہ: تہہ خانہ ≈ 39% · اوپری منزلیں ≈ 61% (Phase-3 دستاویز)'
+      + '<br>سریا (دستاویزی BOQ): 45,490 کلو × 262 روپے ≈ ' + cr(45490 * 262) + ' — گرے بینڈ کے اندر صحت مند حصہ ✓'
+      + '<br><br><b>مکمل منصوبہ — گریڈ منتخب کریں:</b> '
+      + ['B+', 'A', 'A+'].map(g => '<button class="chip' + (g === grade ? ' on' : '') + '" data-grade="' + g + '">گریڈ ' + g + '</button>').join(' ')
+      + '<br><span style="font-size:17px"><b>روپے ' + cr(greyMid * f[0]) + ' – ' + cr(greyMid * f[1]) + '</b></span> <span class="dim">(فنشنگ + الاؤنسز + 10% احتیاطی سمیت؛ Phase-3 دستاویز کے تناسب سے — گریڈ ' + grade + ')</span>'
+      + '<p class="dim" style="margin-top:8px">الماریوں کا دائرہ اکیلا فنشنگ کا 22–23% ہے — آدھا کرنے سے تقریباً 10–40 لاکھ بچ سکتے ہیں (مالک کا فیصلہ)۔ اصل قیمت ٹھیکیدار کی کوٹیشن اور بھمبر کے مقامی ریٹس سے طے ہو گی۔</p>';
+    panel.querySelectorAll('[data-grade]').forEach(x => x.onclick = () => { grade = x.dataset.grade; render(); });
+  }
+  b.onclick = () => { const open = panel.style.display !== 'block'; panel.style.display = open ? 'block' : 'none'; if(open) render(); };
+  window.EST = { measure, render };
+})();
+
+// ================= Explorer v16 — Simulator layer 3: Family life =================
+// Abstract figures (no faces, simple silhouettes — the woman in a long skirt
+// form) walk everyday loops on the ground floor while «زندگی · Life» is on:
+// kitchen to living, entrance to courtyard, children between living and
+// gallery. They follow the model's real rooms; nothing about the building
+// changes. Hidden in stage mode and on other floors' views.
+(function familyLayer(){
+  const FIGG = new THREE.Group(); FIGG.visible = false; scene.add(FIGG);
+  const centre = (half, type) => { const r = ROOMS.find(x => x.fk === 'ground' && x.half === half && x.r[6] === type); return r ? [(r.R.x0 + r.R.x1) / 2, (r.R.z0 + r.R.z1) / 2] : [0, 0]; };
+  const GY = BASE.ground + 0.32;
+  function figure(h, bodyCol, skirt){
+    const g = new THREE.Group();
+    const mat = M(bodyCol), skin = M(0xd9b48f);
+    if(skirt){ const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.95, h * 0.62, 10), mat); cone.position.y = h * 0.31; g.add(cone);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.46, h * 0.26, 10), mat); top.position.y = h * 0.72; g.add(top);
+    } else { const body = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.58, h * 0.78, 10), mat); body.position.y = h * 0.42; g.add(body); }
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.46, 12, 10), skin); head.position.y = h * 0.93; g.add(head);
+    if(skirt){ const scarf = new THREE.Mesh(new THREE.SphereGeometry(0.52, 12, 8, 0, Math.PI * 2, 0, 1.9), M(0x2e7d6b)); scarf.position.y = h * 0.95; g.add(scarf); }
+    g.userData.h = h; return g;
+  }
+  const ent = s => [X(1.2), s * 11];
+  const defs = [
+    { f: figure(5.3, 0x3dab94, true),  pts: [centre('S', 'kitchen'), centre('S', 'living'), centre('S', 'kitchen')], speed: 2.0 },
+    { f: figure(5.6, 0x2c4a73, false), pts: [ent(1), centre('S', 'living'), centre('S', 'court'), centre('S', 'living'), ent(1)], speed: 2.3 },
+    { f: figure(3.8, 0xc7a252, false), pts: [centre('N', 'living'), centre('N', 'bed'), centre('N', 'living')], speed: 2.6 },
+    { f: figure(3.4, 0x7a8ba0, false), pts: [ent(-1), centre('N', 'living'), ent(-1)], speed: 2.6 }
+  ];
+  for(const d of defs){
+    d.i = 0; d.pause = Math.random() * 1.5; d.pos = new THREE.Vector3(d.pts[0][0], GY, d.pts[0][1]);
+    d.f.position.copy(d.pos); FIGG.add(d.f);
+  }
+  let lastT = performance.now();
+  (function moveLoop(now){
+    requestAnimationFrame(moveLoop);
+    const dt = Math.min(0.25, (now - lastT) / 1000); lastT = now;
+    const on = window.LIFE && LIFE.isOn() && !(window.STAGE && STAGE.on) && (state.floor === 'ground' || state.floor === 'all') && state.mode !== 'walk';
+    FIGG.visible = !!on;
+    if(!on) return;
+    for(const d of defs){
+      if(d.pause > 0){ d.pause -= dt; continue; }
+      const tgt = d.pts[(d.i + 1) % d.pts.length];
+      const dx = tgt[0] - d.pos.x, dz = tgt[1] - d.pos.z, dist = Math.hypot(dx, dz);
+      const step = d.speed * dt;
+      if(dist < step){ d.pos.x = tgt[0]; d.pos.z = tgt[1]; d.i = (d.i + 1) % d.pts.length; d.pause = 1.1 + Math.random(); }
+      else { d.pos.x += dx / dist * step; d.pos.z += dz / dist * step; d.f.rotation.y = Math.atan2(dx, dz); }
+      d.f.position.set(d.pos.x, GY + Math.abs(Math.sin(now / 160 + d.speed)) * 0.05, d.pos.z);
+    }
+  })(lastT);
+  window.FAM = { group: FIGG, count: defs.length };
 })();
 </script>
 </body></html>
