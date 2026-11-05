@@ -1012,7 +1012,7 @@ let camTween = null;
 function syncOrb(){
   orb.sph.setFromVector3(camera.position.clone().sub(camTarget));
   orb.sph.phi = Math.max(0.03, Math.min(1.5, orb.sph.phi));
-  orb.sph.radius = Math.max(10, Math.min(280, orb.sph.radius));
+  orb.sph.radius = Math.max(1.2, Math.min(300, orb.sph.radius));
 }
 function applyCam(){
   const off = new THREE.Vector3().setFromSpherical(orb.sph);
@@ -1073,14 +1073,15 @@ function setFloor(fk, instant){
 const walk = { pos: new THREE.Vector3(X(2.5), BASE.ground + 5.3, -4), yaw: Math.PI/2, pitch: 0 };
 const keys = {};
 const pointers = new Map();
-let dragStart = null, pinchD = 0;
+let dragStart = null, pinchD = 0, pinchAnchor = null;
+function rayPlaneY(cx, cy, y){ const r = cvs.getBoundingClientRect(); const v = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); raycaster.setFromCamera(v, camera); const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y); const pt = new THREE.Vector3(); return raycaster.ray.intersectPlane(pl, pt) ? pt : null; }
 const cvs = renderer.domElement;
 cvs.addEventListener('contextmenu', e => e.preventDefault());
 cvs.addEventListener('pointerdown', e => {
   cvs.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
   if(pointers.size === 1) dragStart = {x: e.clientX, y: e.clientY, t: performance.now(), moved: 0};
-  if(pointers.size === 2){ const p = [...pointers.values()]; pinchD = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y); }
+  if(pointers.size === 2){ const p = [...pointers.values()]; pinchD = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y); pinchAnchor = rayPlaneY((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, camTarget.y); }
 });
 cvs.addEventListener('pointermove', e => {
   if(!pointers.has(e.pointerId)) return;
@@ -1090,7 +1091,10 @@ cvs.addEventListener('pointermove', e => {
   if(state.journey) return;
   if(pointers.size === 2){
     const p = [...pointers.values()]; const d = Math.hypot(p[0].x-p[1].x, p[0].y-p[1].y);
-    if(pinchD > 0 && state.mode !== 'walk'){ orb.sph.radius = Math.max(10, Math.min(280, orb.sph.radius * pinchD / d)); applyCam(); }
+    if(pinchD > 0 && state.mode !== 'walk'){
+      orb.sph.radius = Math.max(1.2, Math.min(300, orb.sph.radius * pinchD / d)); applyCam();
+      if(pinchAnchor){ const now = rayPlaneY((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, camTarget.y); if(now){ camTarget.add(pinchAnchor.clone().sub(now)); applyCam(); } }
+    }
     pinchD = d; return;
   }
   if(dragStart) dragStart.moved += Math.abs(dx) + Math.abs(dy);
@@ -1116,8 +1120,14 @@ cvs.addEventListener('pointerup', e => {
 cvs.addEventListener('wheel', e => {
   e.preventDefault();
   if(state.mode === 'walk' || state.journey) return;
-  orb.sph.radius = Math.max(10, Math.min(280, orb.sph.radius * Math.exp(e.deltaY * 0.0011)));
-  applyCam();
+  const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+  const oldR = orb.sph.radius;
+  const newR = Math.max(1.2, Math.min(300, oldR * Math.exp(dy * 0.0011)));
+  if(newR === oldR) return;
+  // zoom toward the point under the cursor, so a detail can be inspected up close
+  const pt = rayFloor(e) || rayPlaneY(e.clientX, e.clientY, camTarget.y);
+  orb.sph.radius = newR; applyCam();
+  if(pt && newR < oldR){ const k = (1 - newR / oldR) * 0.92; camTarget.x += (pt.x - camTarget.x) * k; camTarget.z += (pt.z - camTarget.z) * k; applyCam(); }
 }, {passive:false});
 cvs.addEventListener('dblclick', e => {
   if(state.mode === 'walk' || state.journey) return;
