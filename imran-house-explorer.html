@@ -2717,7 +2717,7 @@ buildFrame();
     body.stageon #mapwrap{ display:none !important; }
     #compass{ display:none !important; }
     #toast{ top:58px !important; width:92vw; text-align:center; font-size:12.5px !important; }
-    #finPanel,#chkPanel,#layPanel,#objPanel{ top:auto !important; bottom:8px !important; left:8px !important; right:8px !important; width:auto !important; max-height:64vh !important; overflow-y:auto !important; z-index:68 !important; }
+    #finPanel,#chkPanel,#layPanel,#objPanel,#misPanel{ top:auto !important; bottom:8px !important; left:8px !important; right:8px !important; width:auto !important; max-height:64vh !important; overflow-y:auto !important; z-index:68 !important; }
     #stageBar{ width:96vw !important; bottom:8px !important; padding:8px 10px 10px !important; }
     #stTitle{ font-size:16.5px !important; }
     #stDesc{ font-size:13.5px !important; line-height:2 !important; }
@@ -2743,6 +2743,76 @@ buildFrame();
   }
   const _sm = stageMode;
   stageMode = function(on){ _sm(on); document.body.classList.toggle('stageon', !!on); };
+})();
+
+// ================= Explorer v13 — Game layer 1: Missions =================
+// The family's first game loop on the REAL model: five small tasks that teach
+// the house by doing — find the stairs, watch it being built, change a
+// finish, place furniture, show the guest route. Progress is ⭐-based and
+// persists in the browser (localStorage). No geometry is touched.
+(function missionsLayer(){
+  const MIS = [
+    { id:'stairs', icon:'🪜', t:'سیڑھیاں تلاش کرو', d:'«مجھے سیڑھیوں تک پہنچاؤ» دباؤ یا سیڑھی والا راستہ چلاؤ' },
+    { id:'build',  icon:'🏗', t:'بنتا ہوا گھر دیکھو', d:'مراحل میں آگے بڑھتے ہوئے کم از کم 25 مرحلے دیکھو' },
+    { id:'finish', icon:'🎨', t:'کسی کمرے کا فنش بدلو', d:'Living Home میں فرش یا دیوار کا رنگ بدلو' },
+    { id:'place',  icon:'🛋', t:'سامان رکھو', d:'Living Home میں کوئی چیز چن کر کمرے میں رکھو' },
+    { id:'guest',  icon:'🚶', t:'مہمان کا راستہ دکھاؤ', d:'«مہمان راستہ — D6 تا ڈرائنگ ہال» چلاؤ' },
+  ];
+  let done = {};
+  try { done = JSON.parse(localStorage.getItem('ih_missions') || '{}'); } catch(e) { done = {}; }
+  const save = () => { try { localStorage.setItem('ih_missions', JSON.stringify(done)); } catch(e) {} };
+  const b = document.createElement('button');
+  b.id = 'misBtn'; b.textContent = '🎯 مشنز · Missions';
+  b.style.cssText = 'background:#8a6d1f;color:#fff8ea';
+  document.querySelector('.bar').appendChild(b);
+  const p = document.createElement('div');
+  p.id = 'misPanel';
+  p.style.cssText = 'display:none;position:fixed;top:86px;left:12px;z-index:64;width:308px;max-width:92vw;background:rgba(10,26,59,.97);border:1.5px solid #C7A252;border-radius:14px;padding:12px 14px;color:#F4F1EA;font-family:system-ui;box-shadow:0 14px 34px rgba(0,0,0,.45)';
+  document.body.appendChild(p);
+  function render(){
+    const n = MIS.filter(m => done[m.id]).length;
+    p.innerHTML = '<div style="font-size:17px;line-height:1.9">🎯 گھر کو کھیلتے ہوئے سیکھو</div>' +
+      '<div style="font-size:13px;color:#D9D2C2;line-height:1.9">ہر کام مکمل کرو، ستارہ پاؤ — ⭐ ' + n + ' از ' + MIS.length + '</div>' +
+      MIS.map(m => '<div style="display:flex;gap:9px;align-items:flex-start;background:' + (done[m.id] ? 'rgba(61,171,148,.18)' : 'rgba(255,255,255,.06)') + ';border:1px solid ' + (done[m.id] ? '#3DAB94' : '#2b4d82') + ';border-radius:11px;padding:7px 10px;margin-top:7px">' +
+        '<div style="font-size:19px">' + (done[m.id] ? '⭐' : m.icon) + '</div>' +
+        '<div><div style="font-size:14.5px;line-height:1.8">' + m.t + (done[m.id] ? ' — مکمل ✓' : '') + '</div>' +
+        '<div style="font-size:12.5px;color:#BFC9BE;line-height:1.8">' + m.d + '</div></div></div>').join('') +
+      (n === MIS.length ? '<div style="margin-top:10px;background:#3DAB94;color:#04231b;border-radius:11px;padding:8px 11px;font-size:14.5px;line-height:1.9;text-align:center">🏆 مبارک! آپ نے پورا گھر سمجھ لیا</div>' : '') +
+      '<button id="misClose" style="width:100%;margin-top:10px;font-size:14px;line-height:2">بند کریں</button>';
+    $('misClose').onclick = () => p.style.display = 'none';
+  }
+  function complete(id){
+    if(done[id]) return;
+    done[id] = true; save(); render();
+    const m = MIS.find(x => x.id === id);
+    const n = MIS.filter(x => done[x.id]).length;
+    toast('⭐ مشن مکمل: ' + m.t + ' (' + n + '/' + MIS.length + ')');
+    if(n === MIS.length) setTimeout(() => toast('🏆 سارے مشن مکمل — مبارک ہو!'), 1800);
+  }
+  b.onclick = () => {
+    ['finPanel','chkPanel','layPanel','objPanel'].forEach(id => { const q = $(id); if(q) q.style.display = 'none'; });
+    render();
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  };
+  // ---- hooks (wrappers + delegation; nothing in earlier parts is edited) ----
+  const bs = $('btnStairs');
+  if(bs){ const _o = bs.onclick; bs.onclick = e => { if(_o) _o(e); complete('stairs'); }; }
+  ['inspN','inspS'].forEach(id => { const el = $(id); if(el){ const _o = el.onclick; el.onclick = e => { if(_o) _o(e); complete('stairs'); }; } });
+  const seen = new Set();
+  const _sg = stageGo;
+  stageGo = function(n){ _sg(n); if(STAGE.on){ seen.add(STAGE.n); if(seen.size >= 25 || STAGE.n >= STAGES.length) complete('build'); } };
+  document.addEventListener('click', e => {
+    const t = e.target;
+    if(t.tagName !== 'BUTTON') return;
+    const tx = t.textContent || '';
+    if(t.closest('#left') && /Stairs/.test(tx)) complete('stairs');
+    if(t.closest('#info') && /Drawing Hall|مہمان/.test(tx)) complete('guest');
+    if(t.closest('#finPanel') && /ماربل|ٹائل|لکڑی|قالین|کریم|نیلاہٹ|گلابی/.test(tx)) complete('finish');
+    if(/یہیں رکھو/.test(tx)) complete('place');
+  }, true);
+  const baseItems = STAGE.clientItems.length;
+  setInterval(() => { if(STAGE.clientItems.length > baseItems) complete('place'); }, 1500);
+  window.MISS = { complete, done: () => done };
 })();
 </script>
 </body></html>
