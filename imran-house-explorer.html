@@ -3472,5 +3472,51 @@ buildFrame();
     marble: { tex: () => marbleTex, applied: () => PLATES.filter(pl => pl.material.map === marbleTex).length, sync: syncMarble }
   });
 })();
+
+// ---------- annotation: draw on the screenshot before saving (P2 complete) ----------
+(function annotate(){
+  const shotBtn = document.getElementById('shotBtn');
+  if(!shotBtn || !window.P2 || !window.P2.shotData) return;
+  const b = document.createElement('button');
+  b.id = 'annoBtn'; b.textContent = '✏️ اسکرین شاٹ پر نوٹ لکھ کر محفوظ کریں';
+  shotBtn.parentNode.insertBefore(b, shotBtn.nextSibling);
+  let overlay = null;
+  function openAnno(){
+    const url = window.P2.shotData();
+    const img = new Image();
+    img.onload = () => {
+      overlay = document.createElement('div');
+      overlay.id = 'annoOverlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(4,10,22,.93);z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:14px';
+      const cv = document.createElement('canvas');
+      cv.width = img.width; cv.height = img.height;
+      cv.style.cssText = 'max-width:94vw;max-height:76vh;border:2px solid #3dab94;border-radius:10px;touch-action:none;cursor:crosshair;background:#fff';
+      const g = cv.getContext('2d');
+      g.drawImage(img, 0, 0);
+      g.strokeStyle = '#d43a2f'; g.lineWidth = Math.max(3, img.width / 320); g.lineCap = 'round'; g.lineJoin = 'round';
+      let drawing = false, last = null;
+      const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+      cv.addEventListener('pointerdown', e => { drawing = true; last = pt(e); cv.setPointerCapture(e.pointerId); });
+      cv.addEventListener('pointermove', e => { if(!drawing) return; const p = pt(e); g.beginPath(); g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); last = p; });
+      cv.addEventListener('pointerup', () => { drawing = false; });
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center';
+      bar.innerHTML = '<span style="color:#EAF3EF;line-height:2.2;font-size:14px">قلم سے نشان لگائیں — مثلاً «یہ دیوار یہاں»</span>';
+      const save = document.createElement('button'); save.textContent = '✓ نوٹ سمیت محفوظ کریں'; save.className = 'gold';
+      save.onclick = () => { const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = 'imran-house-noted.png'; a.click(); closeAnno(); toast('✏️ نوٹ والی تصویر محفوظ ہو گئی'); };
+      const undo = document.createElement('button'); undo.textContent = '↩ صاف کریں';
+      undo.onclick = () => { g.drawImage(img, 0, 0); };
+      const close = document.createElement('button'); close.textContent = '✕ بند کریں';
+      close.onclick = closeAnno;
+      bar.appendChild(save); bar.appendChild(undo); bar.appendChild(close);
+      overlay.appendChild(cv); overlay.appendChild(bar);
+      document.body.appendChild(overlay);
+      window.P2.anno = { canvas: () => cv, close: closeAnno };
+    };
+    img.src = url;
+  }
+  function closeAnno(){ if(overlay){ overlay.remove(); overlay = null; } }
+  b.onclick = () => { const d = document.getElementById('menuDrawer'); if(d) d.classList.remove('open'); openAnno(); };
+})();
 </script>
 </body></html>
