@@ -2436,6 +2436,105 @@ function runChecks(){
   out.push({ s: 'NOT VERIFIED', t:'سیڑھی کے نیچے سر کی اونچائی', d:'ماڈل میں بیم کی اصل گہرائی شامل نہیں، اس لیے سر کی اونچائی یہاں تصدیق شدہ نہیں — یہ انجینئر کی ڈرائنگ سے طے ہو گی۔' });
   return out;
 }
+// ================= Cross-trade conflict matrix (Lesson 7 — the full 23 rows) =================
+// Four conflict types, never conflated: تصادم collision · کلیئرنس clearance ·
+// ترتیب sequence · معلومات missing-information. A row is MEASURED only where
+// the concept model truly carries the data (stage table, room geometry, stage
+// props, finish palette, programme counts). Everything else stays
+// NOT VERIFIED with its reason stated — that honesty is the product.
+function runMatrix(){
+  const M = [];
+  const NV = (n, pair, type, why) => M.push({ n, pair, type, s:'NOT VERIFIED', d: why });
+  const idx = sub => STAGES.findIndex(s => s.t.includes(sub));
+  const one = i => i + 1; // stage numbers are 1-based for people
+  const FL = [
+    { rough:'تہہ خانہ کچا کام', plaster:'تہہ خانہ پلاسٹر', paint:'پینٹ: تہہ خانہ', wet:'گیلے کمروں کا فرش: تہہ خانہ', floor:'فرش: تہہ خانہ', fit:'فٹنگ: تہہ خانہ' },
+    { rough:'گراؤنڈ کچا کام', plaster:'گراؤنڈ پلاسٹر', paint:'پینٹ: گراؤنڈ', wet:'گیلے کمروں کا فرش: گراؤنڈ', floor:'فرش: گراؤنڈ', fit:'فٹنگ: گراؤنڈ' },
+    { rough:'پہلی منزل کچا کام', plaster:'پہلی منزل پلاسٹر', paint:'پینٹ: پہلی منزل', wet:'گیلے کمروں کا فرش: پہلی منزل', floor:'فرش: پہلی منزل', fit:'فٹنگ: پہلی منزل' },
+  ];
+  NV(1, 'چیز × کالم', 'تصادم', 'پائپ چیز (دیوار میں نالی) کے راستے ماڈل میں بنے ہی نہیں — کالم موجود ہیں، چیز نہیں؛ تصادم ناپنے کے لیے دونوں چاہئیں۔');
+  NV(2, 'ڈرین × بیم', 'تصادم', 'ڈرین لائنوں کے راستے ماڈل میں نہیں (صرف اسٹیک پوزیشنیں ہیں)؛ بیم موجود ہیں مگر لائن کے بغیر ٹکراؤ ناپا نہیں جا سکتا — یہ پلمبنگ و اسٹرکچر شیٹس کی باہمی جانچ ہے۔');
+  NV(3, 'ڈھلوان × فرش لیول', 'کلیئرنس', 'پائپ کی ڈھلوان (گریڈینٹ) اور انورٹ لیول ماڈل میں شامل نہیں۔');
+  NV(4, 'ڈرین × فرش ڈھال', 'کلیئرنس', 'باتھ/کچن فرش کی ڈھال (falls) ماڈل میں نہیں بنی — ڈرین کی طرف ڈھال شیٹ و سائٹ کا کام ہے۔');
+  NV(5, 'ساکٹ × کیبنٹ', 'تصادم', 'ساکٹوں کی پوزیشنیں ماڈل کی شے نہیں (گنتی شیٹس 9–11 پر ہے، جگہ نہیں) — اسی لیے بجلی کی تہہ بھی یہاں الگ نہیں دکھائی جاتی۔');
+  NV(6, 'ہوب × سروسز', 'کلیئرنس', 'ہوب کاؤنٹر پر موجود ہے، مگر گیس/پانی سروس لائنیں ماڈل میں نہیں — کنکشن کلیئرنس ناپی نہیں جا سکتی۔');
+  NV(7, 'سنک × ویسٹ', 'تصادم', 'سنک موجود ہے؛ ویسٹ لائن کا راستہ نہیں بنا — اسٹیک تک کا اصل راستہ پلمبنگ شیٹ سے طے ہو گا۔');
+  NV(8, 'ڈاؤن لائٹ × بیم', 'تصادم', 'بیم ماڈل میں ہیں (48)، مگر ڈاؤن لائٹیں ثابت شدہ شے کے طور پر ٹیگ نہیں (نمائندہ فکسچر ہیں) — ٹکراؤ ناپنا ممکن نہیں۔');
+  NV(9, 'پنکھا × فیچر', 'کلیئرنس', 'پنکھے گھومتے ہیں (زندگی موڈ)، مگر پینڈنٹ/فیچر لائٹس کلیئرنس جانچ کے لیے ٹیگ نہیں۔');
+  // 10 — paint before plaster (sequence, measured on the stage table)
+  {
+    const ok = FL.every(f => idx(f.plaster) > -1 && idx(f.paint) > idx(f.plaster));
+    M.push({ n:10, pair:'پینٹ × پلاسٹر (ترتیب)', type:'ترتیب', s: ok ? 'PASS' : 'FAIL',
+      d:'پلاسٹر مرحلے ' + FL.map(f => one(idx(f.plaster))).join('/') + ' — پینٹ ' + FL.map(f => one(idx(f.paint))).join('/') + '۔ ہر منزل پر پلاسٹر پہلے، پینٹ آخر میں؛ پینٹ پلاسٹر سے پہلے آنے کی ترتیب کی غلطی موجود نہیں۔' });
+  }
+  // 11 — flooring before the plumbing test/fittings (sequence, measured)
+  {
+    const ok = FL.every(f => idx(f.rough) > -1 && idx(f.rough) < idx(f.wet) && idx(f.wet) < idx(f.fit));
+    M.push({ n:11, pair:'فرش × پلمبنگ ٹیسٹ (ترتیب)', type:'ترتیب', s: ok ? 'PASS' : 'FAIL',
+      d:'کچا پلمبنگ کام (' + FL.map(f => one(idx(f.rough))).join('/') + ') گیلے کمروں کے فرش (' + FL.map(f => one(idx(f.wet))).join('/') + ') سے پہلے، فٹنگ (' + FL.map(f => one(idx(f.fit))).join('/') + ') اس کے بعد۔ پریشر ٹیسٹ کا الگ مرحلہ نہیں — وہ فٹنگ مرحلے کی تفصیل میں ہے؛ سائٹ پر فرش بند کرنے سے پہلے ٹیسٹ لازم ہو گا۔' });
+  }
+  // 12 — paint after flooring needs protection (sequence, measured)
+  {
+    const after = FL.every(f => idx(f.floor) > -1 && idx(f.floor) < idx(f.paint));
+    M.push({ n:12, pair:'پینٹ × فرش حفاظت (ترتیب)', type:'ترتیب', s: after ? 'WARN' : 'PASS',
+      d: after ? 'پینٹ فرش کے بعد آتا ہے (فرش ' + FL.map(f => one(idx(f.floor))).join('/') + ' ← پینٹ ' + FL.map(f => one(idx(f.paint))).join('/') + ')۔ یہ عام ترتیب ہے، شرط یہ ہے کہ پینٹ سے پہلے فرش کی مکمل کورنگ ہو — ورنہ چھینٹے تیار فرش خراب کریں گے۔'
+               : 'پینٹ فرش سے پہلے مکمل ہو جاتا ہے — فرش حفاظت کا مسئلہ پیدا نہیں ہوتا۔' });
+  }
+  NV(13, 'فریم × پلاسٹر موٹائی', 'کلیئرنس', 'چوکھٹ کی گہرائی اور پلاسٹر کی موٹائی ماڈل میں شامل نہیں۔');
+  NV(14, 'الماری × کھڑکی', 'تصادم', 'کھڑکیاں ثابت شدہ ہیں (18)، مگر الماریاں نمائندہ فرنیچر ہیں، ٹیگ شدہ نہیں — کھڑکی کے سامنے الماری کی جانچ وہ پوزیشن ڈیٹا مانگتی ہے جو تصوراتی ماڈل میں نہیں۔');
+  // 15 — stair finish vs riser geometry (sequence, measured)
+  {
+    const fin = idx('سیڑھیوں کی فنش');
+    let lastCast = -1;
+    STAGES.forEach((s, i) => { if((s.t.includes('سلیب') && s.t.includes('سیڑھی')) || s.t.includes('چھت، ممٹی')) lastCast = i; });
+    M.push({ n:15, pair:'سیڑھی فنش × رائزر', type:'ترتیب', s: (fin > lastCast && lastCast > -1) ? 'PASS' : 'FAIL',
+      d:'سیڑھی فنش مرحلہ ' + one(fin) + ' — تینوں سیڑھیاں اپنی سلیب کے ساتھ ڈھلنے (آخری مرحلہ ' + one(lastCast) + ') کے بعد۔ فنش صرف مٹیریل بدلتا ہے؛ رائزر و قدم کی جیومیٹری مقفل ہے اور فنش سے نہیں بدلتی۔' });
+  }
+  NV(16, 'زیرِ سیڑھی × سر اونچائی', 'کلیئرنس', 'بیم کی اصل گہرائی ماڈل میں نہیں — سر کی اونچائی یہاں تصدیق شدہ نہیں (اوپر پروگرام جانچ بھی یہی کہتی ہے)۔');
+  // 17 — jali veranda vs court void (collision, measured on room geometry)
+  {
+    const vers = ROOMS.filter(r => r.r[6] === 'veranda');
+    let covered = 0;
+    for(const v of vers){
+      const c = ROOMS.find(r => r.fk === v.fk && r.half === v.half && r.r[6] === 'court');
+      if(c && v.R.x0 < c.R.x1 && v.R.x1 > c.R.x0 && v.R.z0 < c.R.z1 && v.R.z1 > c.R.z0) covered++;
+    }
+    M.push({ n:17, pair:'جالی برآمدہ × صحن', type:'تصادم', s: covered ? 'FAIL' : 'PASS',
+      d: covered ? covered + ' برآمدہ حصے صحن کے اوپر آ رہے ہیں — کھلا صحن ڈھک رہا ہے۔' : 'پہلی منزل کے برآمدے (' + vers.length + ' حصے) صحن کے گرد لپٹے ہیں، اس کے اوپر نہیں — کنارے ملتے ہیں، ڈھکتے نہیں؛ صحن کا کھلا پن محفوظ ہے۔' });
+  }
+  NV(18, 'گیٹ جھول × فرش', 'کلیئرنس', 'گیٹ ماڈل میں جھولتے ہیں اور اگلا صحن کھلا ہے، مگر جھول کے دائرے کو کلیئرنس زون کے طور پر ماڈل نہیں کیا گیا — ناپی ہوئی تصدیق نہیں۔');
+  // 19 — division vs water (collision, measured: no wet room crosses the line)
+  {
+    const wet = ROOMS.filter(r => r.r[6] === 'bath' || r.r[6] === 'kitchen');
+    const cross = wet.filter(r => r.R.z0 < -0.01 && r.R.z1 > 0.01);
+    const baths = ROOMS.filter(r => r.r[6] === 'bath');
+    const halfStack = h => baths.some(b => b.half === h && ROOMS.some(r => r !== b && r.half === h && (r.r[6] === 'bath' || r.r[6] === 'kitchen') && Math.abs((r.R.x0 + r.R.x1) / 2 - (b.R.x0 + b.R.x1) / 2) <= 3));
+    M.push({ n:19, pair:'تقسیم × پانی', type:'تصادم', s: (!cross.length && halfStack('N') && halfStack('S')) ? 'PASS' : 'FAIL',
+      d: cross.length ? cross.length + ' گیلے کمرے تقسیم لائن عبور کرتے ہیں۔' : 'کوئی باتھ/کچن درمیانی تقسیم لائن عبور نہیں کرتا اور دونوں حصوں کے اپنے اسٹیک موجود ہیں — کل تقسیم کے دن کوئی پانی لائن نہیں بٹے گی۔' });
+  }
+  NV(20, 'تقسیم × سرکٹس', 'معلومات', 'سرکٹ و ڈی بی راستے ماڈل کی شے نہیں (فی گھر فی منزل DB شیٹس پر درج ہے) — تقسیم پر سرکٹس کی علیحدگی شیٹ سے تصدیق طلب ہے۔');
+  // 21 — formwork vs structure (sequence; shuttering sets + regression-verified behaviour)
+  {
+    const sets = (typeof STAGE !== 'undefined' && STAGE.shut) ? Object.keys(STAGE.shut).length : 0;
+    M.push({ n:21, pair:'شٹرنگ × اسٹرکچر', type:'ترتیب', s: sets === 3 ? 'PASS' : 'NOT VERIFIED',
+      d:'شٹرنگ کے ' + sets + ' سیٹ (گراؤنڈ/پہلی/چھت) اپنے سلیب مرحلے پر آتے اور سلیب ڈلتے ہی غائب ہو جاتے ہیں — یہ رویہ مشین رجعت ٹیسٹ سے تصدیق شدہ ہے؛ یہ قطار پینل میں لائیو نہیں ناپی گئی، ثبوت ٹیسٹ کا ہے۔' });
+  }
+  // 22 — colour vs approved schedule (information, measured on the palette)
+  {
+    const ok = (typeof WALL_PAINTS !== 'undefined' && WALL_PAINTS.length === 5) && (typeof FLOOR_FINISHES !== 'undefined' && FLOOR_FINISHES.length === 5);
+    M.push({ n:22, pair:'رنگ × شیڈول', type:'معلومات', s: ok ? 'PASS' : 'NOT VERIFIED',
+      d:'رنگ و فنش صرف منظور شدہ پیلیٹ سے چنا جا سکتا ہے — ' + WALL_PAINTS.length + ' دیوار رنگ + ' + FLOOR_FINISHES.length + ' فرش فنش؛ شیڈول سے باہر رنگ لگانے کا ایپ میں کوئی راستہ موجود نہیں۔' });
+  }
+  // 23 — 3D model vs 2D programme (information, measured counts)
+  {
+    const cnt = t => ROOMS.filter(r => r.r[6] === t).length;
+    const ok = cnt('bed') === 8 && cnt('bath') === 7 && cnt('kitchen') === 3 && cnt('hall') === 2 && cnt('study') === 1 && cnt('court') === 6
+      && ROOMS.filter(r => r.r[4] === 'LIVING').length === 2 && ROOMS.filter(r => r.r[4] === 'LOUNGE').length === 2;
+    M.push({ n:23, pair:'تھری ڈی × ٹو ڈی (ڈرائنگ)', type:'معلومات', s: ok ? 'PASS' : 'FAIL',
+      d:'ماڈل گنتی: ' + cnt('bed') + ' بیڈ · ' + cnt('bath') + ' باتھ · ' + cnt('kitchen') + ' کچن · ' + cnt('hall') + ' ہال · 2 لیونگ · 2 لاؤنج · ' + cnt('study') + ' اسٹڈی · ' + cnt('court') + ' صحن — ڈرائنگ پروگرام سے مطابق (تفصیلی مطابقت رپورٹ: 5 نومبر)۔ دروازے: ماڈل میں ' + DOORRECS.length + ' انٹرایکٹو، شیڈول میں 40 — فرق گنتی کے دائرے کا ہے، جیومیٹری کی غلطی نہیں۔' });
+  }
+  return M.sort((a, b) => a.n - b.n);
+}
 function checksUI(){
   const b = document.createElement('button');
   b.id = 'chkBtn'; b.textContent = '✓ نقشہ جانچ · Checks';
@@ -2446,12 +2545,24 @@ function checksUI(){
   p.style.cssText = 'display:none;position:fixed;top:86px;inset-inline-start:12px;z-index:60;width:320px;max-width:88vw;max-height:74vh;overflow:auto;background:rgba(10,26,59,.97);border:1.5px solid #3DAB94;border-radius:16px;padding:12px 14px;color:#F4F1EA;box-shadow:0 14px 34px rgba(0,0,0,.5)';
   const chipFor = s => s === 'PASS' ? '<span style="background:#1d5c48;color:#9fe8cf;border-radius:10px;padding:0 9px;font-size:12px;line-height:2">✓ درست</span>'
     : s === 'FAIL' ? '<span style="background:#6e2430;color:#ffb9c2;border-radius:10px;padding:0 9px;font-size:12px;line-height:2">✗ ناکام</span>'
+    : s === 'WARN' ? '<span style="background:#6e5424;color:#ffd98a;border-radius:10px;padding:0 9px;font-size:12px;line-height:2">⚠ احتیاط</span>'
+    : s === 'INFO' ? '<span style="background:#274b73;color:#bcd7f5;border-radius:10px;padding:0 9px;font-size:12px;line-height:2">اطلاع</span>'
     : '<span style="background:#5c531d;color:#f0e2a0;border-radius:10px;padding:0 9px;font-size:12px;line-height:2">؟ تصدیق نہیں</span>';
+  const typeChip = t => '<span style="background:#1b3358;color:#9fc2e8;border-radius:10px;padding:0 8px;font-size:11px;line-height:2">' + t + '</span>';
   let html = '<div style="font-size:16.5px;line-height:2">✓ نقشے کی خودکار جانچ</div>' +
     '<div style="font-size:12.5px;line-height:2;color:#A9B8CC">یہ جانچ اسی ماڈل کے ڈیٹا پر چلتی ہے — غلطی یہیں پکڑو، زمین پر نہیں۔</div>';
   for(const r of runChecks()){
     html += '<div style="border-top:1px solid #2b4d82;margin-top:8px;padding-top:6px">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:14px;line-height:2">' + r.t + '</span>' + chipFor(r.s) + '</div>' +
+      '<div style="font-size:12.5px;line-height:2;color:#C7D2E0">' + r.d + '</div></div>';
+  }
+  const mx = runMatrix();
+  const nPass = mx.filter(r => r.s === 'PASS').length, nWarn = mx.filter(r => r.s === 'WARN').length, nNV = mx.filter(r => r.s === 'NOT VERIFIED').length;
+  html += '<div style="border-top:2px solid #3DAB94;margin-top:12px;padding-top:8px;font-size:15.5px;line-height:2">⚔ کراس ٹریڈ تنازع میٹرکس — مکمل ' + mx.length + ' قوانین</div>' +
+    '<div style="font-size:12.5px;line-height:2;color:#A9B8CC">چار اقسام الگ الگ: تصادم · کلیئرنس · ترتیب · معلومات۔ خلاصہ: ✓ ' + nPass + ' درست · ⚠ ' + nWarn + ' احتیاط · ؟ ' + nNV + ' تصدیق نہیں — جو چیز ماڈل میں ہے ہی نہیں، اس کی «تصدیق» یہاں نہیں بکتی۔</div>';
+  for(const r of mx){
+    html += '<div style="border-top:1px solid #2b4d82;margin-top:8px;padding-top:6px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:14px;line-height:2">' + r.n + '. ' + r.pair + '</span><span style="display:flex;gap:5px">' + typeChip(r.type) + chipFor(r.s) + '</span></div>' +
       '<div style="font-size:12.5px;line-height:2;color:#C7D2E0">' + r.d + '</div></div>';
   }
   html += '<div style="border-top:1px solid #2b4d82;margin-top:10px;padding-top:6px;font-size:12px;line-height:2;color:#A9B8CC">یہ تصوراتی ماڈل کے ڈیٹا کی جانچ ہے — سٹرکچرل یا انجینئرنگ تصدیق نہیں۔</div>' +
