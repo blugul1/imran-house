@@ -51,7 +51,7 @@
   <div class="ttl">🏠 کلائینٹ اسٹوڈیو<small>نقشے کی پیمائش سے فرنشڈ گھر تک · تصوراتی — ماہر تصدیق لازم</small></div>
   <button id="menuBtn" style="display:none">☰ سب کام · Menu</button>
   <div class="grp" id="modeGrp" style="display:none"><span class="cap">انداز</span><button id="mPlan">پلان</button><button id="mModel" class="on">ماڈل</button></div>
-  <div class="grp" id="floorGrp" style="display:none"><span class="cap">منزل</span><button data-fl="ground" class="on">گراؤنڈ</button><button data-fl="first">پہلی</button><button data-fl="all">سب</button></div>
+  <div class="grp" id="floorGrp" style="display:none"><span class="cap">منزل</span><button data-fl="basement" id="flBase" style="display:none">تہہ خانہ</button><button data-fl="ground" class="on">گراؤنڈ</button><button data-fl="first">پہلی</button><button data-fl="all">سب</button></div>
 </div>
 
 <div id="intake">
@@ -95,6 +95,7 @@
     <label class="chk"><input type="checkbox" id="f_drawing" checked> ڈرائنگ روم (مہمانوں کے لیے)</label>
     <label class="chk"><input type="checkbox" id="f_porch" checked> کار پورچ</label>
     <label class="chk"><input type="checkbox" id="f_study"> مطالعہ / ہوم اسکول کمرہ</label>
+    <label class="chk"><input type="checkbox" id="f_basement"> تہہ خانہ (بیسمنٹ) بھی ہو — ڈرائنگ ہال و اضافی کمرے نیچے</label>
   </fieldset>
   <button id="buildBtn">🏠 نقشہ بنائیں — گھر بنتا دیکھیں</button>
   <p class="sub" style="margin-top:10px">یہ تصوراتی نقشہ ہے: پیمائشیں آپ کی دی ہوئی، ترتیب طے شدہ اصولوں سے۔ حتمی نقشہ و تعمیر سے پہلے ماہر (انجینئر/آرکیٹیکٹ) کی تصدیق لازم ہے۔</p>
@@ -126,12 +127,17 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 // Output: a concept plan (rooms, doors, windows per floor) built on frozen
 // rules: side gallis, entrance -> stair hall -> gallery spine, wet cluster
 // stacked floor over floor, open court at the back of the spine for light.
+// v2 (5 Nov 2026): optional BASEMENT level (same skeleton below ground,
+// lightwell court, drawing hall) + TRUE TRAPEZOID plot polygon in meta
+// (west edge straight, taper carried on the east edge — declared). Rooms
+// still sit inside the inscribed rectangle; the land itself is true-shape.
 // CONCEPT ONLY — a human expert verifies before anything is built.
 function generatePlan(spec){
   const P = spec.plot, N = spec.needs, FAM = spec.family;
   const depth = (P.left + P.right) / 2;
   const plotW = Math.max(P.front, P.back), minW = Math.min(P.front, P.back);
   const plotArea = (P.front + P.back) / 2 * depth;
+  const hasB = !!spec.basement;
   const gally = minW >= 34 ? 3.5 : 2.5;
   const frontSet = N.carPorch ? 13 : 7;
   const backSet = 6;
@@ -141,6 +147,8 @@ function generatePlan(spec){
   const warnings = [];
   if(W < 20) warnings.push('پلاٹ کی چوڑائی کم ہے — کمرے تنگ ہوں گے، ماہر سے جائزہ ضروری');
   if(D < 34) warnings.push('پلاٹ کی گہرائی کم ہے — پروگرام گھٹایا گیا ہے');
+  if(hasB) warnings.push('تہہ خانہ: روشنی لائٹ ویل و اگلے حصے سے آئے گی — واٹر پروفنگ، نکاسی و ہوا کی ماہر تصدیق لازمی');
+  if(P.front !== P.back) warnings.push('ٹیڑھا (ٹریپیزوئیڈ) پلاٹ: ٹیڑھ مشرقی کنارے پر لی گئی ہے؛ کمرے اندرونی مستطیل میں ہیں، اضافی جگہ گلی/صحن میں آتی ہے');
   const spineW = W >= 27 ? 5 : 4.5;
   const sx0 = (x0 + x1) / 2 - spineW / 2, sx1 = sx0 + spineW;   // gallery spine
   const hallD = Math.min(13, D * 0.3);                           // entry + stair hall (front of spine)
@@ -164,13 +172,14 @@ function generatePlan(spec){
     if(r.z <= z0 + 0.01) win(r.x + r.w / 2, r.z, 'S', 4.5);
     if(r.z + r.d >= z1 - 0.01) win(r.x + r.w / 2, r.z + r.d, 'N', r.type === 'bath' ? 2 : 4.5, r.type === 'bath');
   }
-  function buildFloor(fk, top){
-    const H = fk; // label prefix
+  function buildFloor(fk, top, isBase){
     // circulation: stair hall (front spine) + gallery
-    room(fk, 'hall', top ? 'سیڑھی ہال' : 'داخلی ہال', sx0, z0, spineW + 3, hallD, 'C');
+    room(fk, 'hall', top ? 'سیڑھی ہال' : (isBase ? 'سیڑھی ہال' : 'داخلی ہال'), sx0, z0, spineW + 3, hallD, 'C');
     room(fk, 'circ', 'گیلری', sx0, z0 + hallD, spineW, (zB1 - z0 - hallD) + (zC1 - zB1) - 7, 'C');
-    // Row A (front)
-    const livA = room(fk, top ? 'lounge' : 'living', top ? 'لاؤنج' : 'لیونگ روم', x0, z0, colW - 1.5, rA, 'W');
+    // Row A (front): basement west = drawing hall; ground = living; top = lounge
+    const livA = isBase
+      ? room(fk, 'drawing', 'ڈرائنگ ہال', x0, z0, colW - 1.5, rA, 'W')
+      : room(fk, top ? 'lounge' : 'living', top ? 'لاؤنج' : 'لیونگ روم', x0, z0, colW - 1.5, rA, 'W');
     const drA = room(fk, top ? (N.study ? 'study' : 'bed') : (N.drawing ? 'drawing' : 'bed'), top ? (N.study ? 'مطالعہ' : 'بیڈ روم') : (N.drawing ? 'ڈرائنگ روم' : 'بیڈ روم'), sx1 + 3, z0, colW - 3, rA, 'E');
     // Row B (middle): beds; east column may host bath slot (stacked)
     const bedB1 = room(fk, 'bed', 'بیڈ روم 1', x0, zA1, colW, rB, 'W');
@@ -183,9 +192,9 @@ function generatePlan(spec){
     } else {
       bedB2 = room(fk, 'bed', 'بیڈ روم 2', sx1, zA1, colW, rB, 'E');
     }
-    // Row C (back): kitchen west, court centre (open), bath+store east
+    // Row C (back): kitchen west, court centre (open / lightwell in basement), bath+store east
     const kitC = room(fk, 'kitchen', 'کچن', x0, zB1, colW, zC1 - zB1, 'W');
-    room(fk, 'court', 'روشن دان', sx0, zC1 - 7, spineW, 7, 'C');
+    room(fk, 'court', isBase ? 'لائٹ ویل' : 'روشن دان', sx0, zC1 - 7, spineW, 7, 'C');
     const bathC = room(fk, 'bath', 'باتھ', sx1, zB1, Math.min(7, colW), 9, 'E');
     const storeC = room(fk, 'store', 'اسٹور', sx1 + Math.min(7, colW), zB1, colW - Math.min(7, colW), zC1 - zB1, 'E');
     const all = [livA, drA, bedB1, bedB2, bathB, kitC, bathC, storeC].filter(Boolean);
@@ -193,13 +202,14 @@ function generatePlan(spec){
     if(bathB) doorToSpine(bathB);
     return all;
   }
-  buildFloor('ground', false);
-  if(floors === 2) buildFloor('first', true);
+  if(hasB) buildFloor('basement', false, true);
+  buildFloor('ground', false, false);
+  if(floors === 2) buildFloor('first', true, false);
   door((sx0 + sx1) / 2, z0, 'S', 3.6); // main entrance from porch
+  const levelFks = hasB ? ['basement', 'ground', 'first'] : ['ground', 'first'];
   // validation: rooms inside envelope, no overlaps among solid rooms
   const errs = [];
-  const solid = rooms.filter(r => !['circ', 'hall', 'court'].includes(r.type));
-  for(const fk of ['ground', 'first']){
+  for(const fk of levelFks){
     const rs = rooms.filter(r => r.fk === fk);
     for(const r of rs){
       if(r.x < x0 - 0.02 || r.z < z0 - 0.02 || r.x + r.w > x1 + 0.02 || r.z + r.d > z1 + 0.02) errs.push(r.id + ' باہر');
@@ -210,16 +220,26 @@ function generatePlan(spec){
       if(ox > 0.05 && oz > 0.05) errs.push(a.id + '×' + b.id + ' اوورلیپ');
     }
   }
-  // stack check: first-floor baths over ground wet rooms
+  // stack check: each upper level's baths over the level below's wet rooms
   let stackOk = 0, stackN = 0;
-  for(const b of rooms.filter(r => r.fk === 'first' && r.type === 'bath')){
-    stackN++;
-    const cx = b.x + b.w / 2, cz = b.z + b.d / 2;
-    if(rooms.some(r => r.fk === 'ground' && (r.type === 'bath' || r.type === 'kitchen') && cx >= r.x && cx <= r.x + r.w && cz >= r.z && cz <= r.z + r.d)) stackOk++;
+  const pairs = [['first', 'ground']];
+  if(hasB) pairs.push(['ground', 'basement']);
+  for(const [up, lo] of pairs){
+    for(const b of rooms.filter(r => r.fk === up && r.type === 'bath')){
+      stackN++;
+      const cx = b.x + b.w / 2, cz = b.z + b.d / 2;
+      if(rooms.some(r => r.fk === lo && (r.type === 'bath' || r.type === 'kitchen') && cx >= r.x && cx <= r.x + r.w && cz >= r.z && cz <= r.z + r.d)) stackOk++;
+    }
   }
   const covered = W * D;
-  const greyLo = covered * floors * 3000, greyHi = covered * floors * 3300;
-  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * floors), x0, z0, x1, z1, W, D, depth, plotW, floors, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders } };
+  const levels = floors + (hasB ? 1 : 0);
+  // grey band: above-ground 3,000–3,300/sq ft; basement 4,000–4,600/sq ft (Phase-3 benchmarks, Lahore Oct 2026)
+  const greyLo = covered * floors * 3000 + (hasB ? covered * 4000 : 0);
+  const greyHi = covered * floors * 3300 + (hasB ? covered * 4600 : 0);
+  // true plot polygon (plot coords: x from west edge, z from street/front):
+  // west edge straight; the taper is carried on the east edge.
+  const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
+  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan };
 </script>
@@ -229,15 +249,15 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
   const toast = m => { const t = $('toast'); t.textContent = m; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3400); };
   // ---------- form ----------
   const PRESETS = [
-    { front: 25, back: 25, left: 55, right: 55, street: 15, floors: 2, adults: 3, children: 2, elders: 1, beds: 3, baths: 2, drawing: true, porch: true, study: false },
-    { front: 40, back: 40, left: 75, right: 75, street: 20, floors: 2, adults: 4, children: 3, elders: 0, beds: 4, baths: 2, drawing: true, porch: true, study: false },
-    { front: 50, back: 46, left: 90, right: 90, street: 24, floors: 2, adults: 6, children: 3, elders: 1, beds: 5, baths: 3, drawing: true, porch: true, study: true }
+    { front: 25, back: 25, left: 55, right: 55, street: 15, floors: 2, adults: 3, children: 2, elders: 1, beds: 3, baths: 2, drawing: true, porch: true, study: false, basement: false },
+    { front: 40, back: 40, left: 75, right: 75, street: 20, floors: 2, adults: 4, children: 3, elders: 0, beds: 4, baths: 2, drawing: true, porch: true, study: false, basement: false },
+    { front: 50, back: 46, left: 90, right: 90, street: 24, floors: 2, adults: 6, children: 3, elders: 1, beds: 5, baths: 3, drawing: true, porch: true, study: true, basement: true }
   ];
   document.querySelectorAll('[data-preset]').forEach(b => b.onclick = () => {
     const p = PRESETS[+b.dataset.preset];
     $('f_front').value = p.front; $('f_back').value = p.back; $('f_left').value = p.left; $('f_right').value = p.right;
     $('f_street').value = p.street; $('f_floors').value = p.floors; $('f_adults').value = p.adults; $('f_children').value = p.children; $('f_elders').value = p.elders;
-    $('f_beds').value = p.beds; $('f_baths').value = p.baths; $('f_drawing').checked = p.drawing; $('f_porch').checked = p.porch; $('f_study').checked = p.study;
+    $('f_beds').value = p.beds; $('f_baths').value = p.baths; $('f_drawing').checked = p.drawing; $('f_porch').checked = p.porch; $('f_study').checked = p.study; $('f_basement').checked = p.basement;
     toast('نمونہ بھر دیا گیا — اب «نقشہ بنائیں» دبائیں');
   });
   function readSpec(){
@@ -246,7 +266,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
       name: $('f_name').value.trim(), loc: $('f_loc').value.trim(),
       plot: { front: num('f_front') || 30, back: num('f_back') || 30, left: num('f_left') || 60, right: num('f_right') || 60 },
       street: num('f_street'),
-      floors: +$('f_floors').value,
+      floors: +$('f_floors').value, basement: $('f_basement').checked,
       family: { adults: num('f_adults'), children: num('f_children'), elders: num('f_elders') },
       needs: { bedrooms: +$('f_beds').value, baths: +$('f_baths').value, drawing: $('f_drawing').checked, carPorch: $('f_porch').checked, study: $('f_study').checked }
     };
@@ -261,6 +281,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8a97a5, 1.1); scene.add(hemi);
   const dl = new THREE.DirectionalLight(0xffffff, 0.95); dl.position.set(-70, 110, -50); scene.add(dl);
   const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .92 }, o || {}));
+  const SOILM = M(0x4a3826, { transparent: true });
   const MAT = { conc: M(0x9a968c), brick: M(0x9e5a38), plaster: M(0xe9e2d2), wood: M(0x8a6844), wood2: M(0x6e4f30), fab: M(0x7a9bb5), fab2: M(0xb56a5a), white: M(0xf2efe8), glass: M(0x86b7cc, { transparent: true, opacity: .55 }), soil: M(0x4a3826), green: M(0x5d8a4d), dark: M(0x2e2a26) };
   const TINT = { living: 0xd9c6a5, lounge: 0xd9c6a5, drawing: 0xd3bf9d, bed: 0xc4cfdd, bath: 0x9fc4bd, kitchen: 0xd8d2c4, hall: 0xcfc4ae, circ: 0xcfc4ae, store: 0xb9ac93, study: 0xc9d2bd, court: 0x7fae62 };
   function sizeRenderer(){ const w = app.clientWidth, h = app.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
@@ -282,9 +303,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
   cvs.addEventListener('wheel', e => { e.preventDefault(); orb.sph.radius = Math.max(2.5, Math.min(320, orb.sph.radius * Math.exp(e.deltaY * 0.0011))); applyCam(); }, { passive: false });
   cvs.addEventListener('dblclick', e => { const pt = pickPoint(e); if(pt){ camTg.x = pt.x; camTg.z = pt.z; applyCam(); } });
   // ---------- state ----------
-  const state = { mode: 'model', floor: 'ground', stage: null, dusk: false };
+  const state = { mode: 'model', floor: 'ground', stage: null, dusk: false, staging: false };
   let PLAN = null, HOUSE = null, STAGES = [], labelDivs = [];
   const FH = 11;
+  const BASES = { basement: -FH, ground: 0, first: FH };
   const MX = x => x - PLAN.meta.plotW / 2, MZ = z => z - PLAN.meta.depth / 2;
   function B(parent, x, y, z, w, h, d, mat, st){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if(st != null) m.userData.st = st; parent.add(m); return m; }
   // ---------- build the house ----------
@@ -304,23 +326,52 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     HOUSE = new THREE.Group(); scene.add(HOUSE);
     const { x0, z0, x1, z1, W, D, depth, plotW } = plan.meta;
     const two = plan.meta.floors === 2;
-    STAGES = ['پلاٹ و حدود', 'کھدائی', 'بنیاد', 'ڈھانچہ — کالم و سلیب', 'دیواریں (گراؤنڈ)'];
+    const hasB = plan.meta.basement;
+    STAGES = ['پلاٹ و حدود', 'کھدائی', 'بنیاد'];
+    if(hasB) STAGES.push('تہہ خانہ — دیواریں');
+    STAGES.push('ڈھانچہ — کالم و سلیب', 'دیواریں (گراؤنڈ)');
     if(two) STAGES.push('ڈھانچہ (پہلی منزل)', 'دیواریں (پہلی منزل)');
     STAGES.push('چھت و پیراپٹ', 'پلستر و رنگ', 'دروازے و کھڑکیاں', 'کچن و باتھ فٹنگ', 'فرش فنش', 'فرنیچر', 'مکمل گھر 🏠');
     const S = {}; STAGES.forEach((s, i) => S[s] = i + 1);
     const stFrame1 = S['ڈھانچہ — کالم و سلیب'], stWall1 = S['دیواریں (گراؤنڈ)'];
+    const stWallB = hasB ? S['تہہ خانہ — دیواریں'] : 99;
     const stFrame2 = two ? S['ڈھانچہ (پہلی منزل)'] : S['چھت و پیراپٹ'], stWall2 = two ? S['دیواریں (پہلی منزل)'] : 99;
     const stRoof = S['چھت و پیراپٹ'], stPlaster = S['پلستر و رنگ'], stOpen = S['دروازے و کھڑکیاں'], stFit = S['کچن و باتھ فٹنگ'], stFloor = S['فرش فنش'], stFurn = S['فرنیچر'];
-    // plot + boundary (stage 1)
-    B(HOUSE, 0, 0.05, 0, plotW, 0.1, depth, M(0xcac2ae), 1);
-    const bw = (x, z, w, d) => B(HOUSE, x, 3, z, w, 6, d, MAT.plaster, 1);
+    // plot + boundary (stage 1) — TRUE plot shape: the trapezoid polygon from meta
+    const poly = plan.meta.plotPoly.map(p => ({ x: MX(p.x), z: MZ(p.z) }));
+    {
+      const shp = new THREE.Shape(); shp.moveTo(poly[0].x, -poly[0].z);
+      for(let i = 1; i < poly.length; i++) shp.lineTo(poly[i].x, -poly[i].z);
+      shp.closePath();
+      const pg = new THREE.Mesh(new THREE.ShapeGeometry(shp), M(0xcac2ae));
+      pg.rotation.x = -Math.PI / 2; pg.position.y = 0.05; pg.userData.st = 1; HOUSE.add(pg);
+    }
+    function bwall(p, q, gapC, gapW){
+      const dx = q.x - p.x, dz = q.z - p.z, len = Math.hypot(dx, dz), ang = Math.atan2(dx, dz);
+      const runs = gapC != null ? [[0, Math.max(0, gapC - gapW / 2)], [Math.min(len, gapC + gapW / 2), len]] : [[0, len]];
+      for(const [a, b] of runs){ if(b - a < 0.1) continue; const m = B(HOUSE, p.x + dx * (a + b) / 2 / len, 3, p.z + dz * (a + b) / 2 / len, 0.6, 6, b - a, MAT.plaster, 1); m.rotation.y = ang; }
+    }
+    const hallG = plan.rooms.find(r => r.fk === 'ground' && r.type === 'hall');
     const gw = Math.min(11, plotW * 0.3);
-    bw(-(gw / 2 + (plotW - gw) / 4), -depth / 2, (plotW - gw) / 2, 0.6); bw((gw / 2 + (plotW - gw) / 4), -depth / 2, (plotW - gw) / 2, 0.6);
-    bw(0, depth / 2, plotW, 0.6); bw(-plotW / 2, 0, 0.6, depth); bw(plotW / 2, 0, 0.6, depth);
-    B(HOUSE, -gw / 4, 2.8, -depth / 2, gw / 2 - 0.2, 5.4, 0.22, MAT.dark, 1); B(HOUSE, gw / 4, 2.8, -depth / 2, gw / 2 - 0.2, 5.4, 0.22, MAT.dark, 1);
-    // excavation (stage 2 only) + raft (3)
-    const pit = B(HOUSE, MX((x0 + x1) / 2), -0.4, MZ((z0 + z1) / 2), W + 3, 0.9, D + 3, MAT.soil, 2); pit.userData.onlyStage = 2;
-    B(HOUSE, MX((x0 + x1) / 2), -0.5, MZ((z0 + z1) / 2), W + 1.5, 1, D + 1.5, MAT.conc, 3);
+    const gapC = (hallG.x + hallG.w / 2) - plan.meta.plotPoly[0].x;
+    bwall(poly[0], poly[1], gapC, gw);            // front (street) with gate gap
+    bwall(poly[3], poly[2]);                      // back
+    bwall(poly[0], poly[3]);                      // west
+    bwall(poly[1], poly[2]);                      // east — slanted on a trapezoid
+    const gcx = MX(hallG.x + hallG.w / 2);
+    B(HOUSE, gcx - gw / 4, 2.8, poly[0].z, gw / 2 - 0.2, 5.4, 0.22, MAT.dark, 1); B(HOUSE, gcx + gw / 4, 2.8, poly[0].z, gw / 2 - 0.2, 5.4, 0.22, MAT.dark, 1);
+    // excavation + raft (3): with a basement the dig is a full level; soil surround stays (it IS the earth)
+    if(hasB){
+      const T = 2.4, ecx = MX((x0 + x1) / 2), ecz = MZ((z0 + z1) / 2);
+      B(HOUSE, MX(x0) - T / 2 - 0.3, -FH / 2, ecz, T, FH, D + 2 * T, SOILM, 2);
+      B(HOUSE, MX(x1) + T / 2 + 0.3, -FH / 2, ecz, T, FH, D + 2 * T, SOILM, 2);
+      B(HOUSE, ecx, -FH / 2, MZ(z0) - T / 2 - 0.3, W + 2 * T, FH, T, SOILM, 2);
+      B(HOUSE, ecx, -FH / 2, MZ(z1) + T / 2 + 0.3, W + 2 * T, FH, T, SOILM, 2);
+      B(HOUSE, ecx, -FH - 0.55, ecz, W + 2 * T, 0.9, D + 2 * T, SOILM, 2);
+    } else {
+      const pit = B(HOUSE, MX((x0 + x1) / 2), -0.4, MZ((z0 + z1) / 2), W + 3, 0.9, D + 3, MAT.soil, 2); pit.userData.onlyStage = 2;
+    }
+    B(HOUSE, MX((x0 + x1) / 2), hasB ? -FH - 0.5 : -0.5, MZ((z0 + z1) / 2), W + 1.5, 1, D + 1.5, MAT.conc, 3);
     // wall segments per floor
     function segsFor(fk){
       const map = new Map();
@@ -367,11 +418,11 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
       }
     }
     // floors: slabs, columns, plates, stairs, walls, furniture
-    const bases = { ground: 0, first: FH };
-    for(const fk of ['ground', 'first']){
-      if(fk === 'first' && !two) break;
-      const base = bases[fk], stF = fk === 'ground' ? stFrame1 : stFrame2, stW = fk === 'ground' ? stWall1 : stWall2;
-      const slab = B(HOUSE, MX((x0 + x1) / 2), base - 0.35, MZ((z0 + z1) / 2), W, 0.7, D, MAT.conc, stF); slab.userData.isSlab = true;
+    for(const fk of ['basement', 'ground', 'first']){
+      if(fk === 'basement' && !hasB) continue;
+      if(fk === 'first' && !two) continue;
+      const base = BASES[fk], stF = fk === 'ground' ? stFrame1 : (fk === 'first' ? stFrame2 : stWallB), stW = fk === 'ground' ? stWall1 : (fk === 'first' ? stWall2 : stWallB);
+      if(fk !== 'basement'){ const slab = B(HOUSE, MX((x0 + x1) / 2), base - 0.35, MZ((z0 + z1) / 2), W, 0.7, D, MAT.conc, stF); slab.userData.isSlab = true; }
       for(const cx of [x0, x1]) for(const cz of [z0, z1]) B(HOUSE, MX(cx), base + FH / 2, MZ(cz), 1, FH, 1, MAT.conc, stF);
       B(HOUSE, MX((x0 + x1) / 2), base + FH / 2, MZ(z0), 1, FH, 1, MAT.conc, stF); B(HOUSE, MX((x0 + x1) / 2), base + FH / 2, MZ(z1), 1, FH, 1, MAT.conc, stF);
       buildWalls(fk, base, stW);
@@ -379,9 +430,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
         const cx = MX(r.x + r.w / 2), cz = MZ(r.z + r.d / 2);
         if(r.type !== 'court'){ const pl = B(HOUSE, cx, base + 0.06, cz, r.w - 0.1, 0.12, r.d - 0.1, M(TINT[r.type] || 0xcccccc), stFloor); pl.userData.room = r; pl.userData.isPlate = true; }
         else { B(HOUSE, cx, base + 0.04, cz, r.w - 0.2, 0.08, r.d - 0.2, MAT.green, stFloor); const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 3.4, 6), MAT.wood2); tr.position.set(cx, base + 1.7, cz); tr.userData.st = stFloor; HOUSE.add(tr); const lv = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 6), MAT.green); lv.position.set(cx, base + 4.4, cz); lv.userData.st = stFloor; HOUSE.add(lv); }
-        if(r.type === 'hall' && fk === 'ground'){
+        if(r.type === 'hall' && fk !== 'first'){
           const steps = 16, sw = Math.min(3.4, r.w / 2 - 0.3);
-          for(let i = 0; i < steps; i++){ const zz = r.z + 1 + i * ((r.d - 2) / steps); const up = i < steps / 2; const yy = base + (up ? (i + 1) : (i - steps / 2 + 1)) * (FH / (steps / 2)) * 0.5 + 0.4; B(HOUSE, MX(r.x + (up ? sw / 2 + 0.2 : r.w - sw / 2 - 0.2)), yy, MZ(zz), sw, 0.5, (r.d - 2) / steps + 0.06, MAT.conc, two ? stFrame2 : stRoof); }
+          for(let i = 0; i < steps; i++){ const zz = r.z + 1 + i * ((r.d - 2) / steps); const up = i < steps / 2; const yy = base + (up ? (i + 1) : (i - steps / 2 + 1)) * (FH / (steps / 2)) * 0.5 + 0.4; B(HOUSE, MX(r.x + (up ? sw / 2 + 0.2 : r.w - sw / 2 - 0.2)), yy, MZ(zz), sw, 0.5, (r.d - 2) / steps + 0.06, MAT.conc, fk === 'basement' ? stFrame1 : (two ? stFrame2 : stRoof)); }
         }
         furnish(r, base, stFit, stFurn);
       }
@@ -407,6 +458,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     // labels
     const labWrap = $('labels');
     for(const r of plan.rooms){ const d = document.createElement('div'); d.className = 'lbl'; d.textContent = r.label; d.dataset.fk = r.fk; labWrap.appendChild(d); labelDivs.push(d); d._room = r; }
+    $('flBase').style.display = hasB ? '' : 'none';
+    if(!hasB && state.floor === 'basement'){ state.floor = 'ground'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'ground')); }
     applyStage(STAGES.length);
     applyFloor();
     summary(spec);
@@ -440,30 +493,37 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     }
   }
   // ---------- stages / floor / mode ----------
+  const _wv = new THREE.Vector3();
+  function bandOf(m){ m.getWorldPosition(_wv); return _wv.y < -0.5 ? 'basement' : (_wv.y < FH - 0.5 ? 'ground' : (_wv.y < 2 * FH - 0.5 ? 'first' : 'roof')); }
+  function applyBand(){ if(!HOUSE) return; const f = state.floor; HOUSE.traverse(m => { if(m.userData.st == null) return; const stv = m.userData._stv !== false; m.visible = stv && (state.staging || f === 'all' || bandOf(m) === f); }); }
   function applyStage(n){
     state.stage = n;
     if(!HOUSE) return;
-    HOUSE.traverse(m => { if(m.userData.st != null) m.visible = m.userData.onlyStage ? (n === m.userData.onlyStage) : (n >= m.userData.st); });
+    HOUSE.traverse(m => { if(m.userData.st != null) m.userData._stv = m.userData.onlyStage ? (n === m.userData.onlyStage) : (n >= m.userData.st); });
+    applyBand();
     HOUSE.traverse(m => { if(m.userData.isWall) m.material = n >= STAGES.indexOf('پلستر و رنگ') + 1 ? MAT.plaster : MAT.brick; });
     $('stRange').max = STAGES.length; $('stRange').value = n;
     $('stLabel').textContent = 'مرحلہ ' + n + '/' + STAGES.length + ' — ' + STAGES[n - 1];
   }
   function applyFloor(){
     if(!HOUSE) return;
-    const bases = { ground: 0, first: FH };
+    const bases = BASES;
     HOUSE.traverse(m => { if(m.userData.isSlab || m.userData.isPlate){} });
     for(const d of labelDivs) d.style.display = (state.floor === 'all' || d.dataset.fk === state.floor) ? 'block' : 'none';
     // floor isolation: fade the other floor's group via camera target height is complex; use visibility by y-band:
     HOUSE.traverse(m => { if(m.userData.st == null || m.userData.onlyStage) return; });
     // simple approach: nothing hidden structurally; camera framing changes
     const fk = state.floor;
-    const ty = fk === 'first' ? FH + 3 : 3;
+    const ty = fk === 'first' ? FH + 3 : (fk === 'basement' ? -FH + 3 : 3);
+    SOILM.opacity = fk === 'basement' ? 0.15 : 1;
     camTg.y = ty;
     if(state.mode === 'plan'){ orb.sph.phi = 0.12; orb.sph.radius = Math.max(PLAN.meta.plotW, PLAN.meta.depth) * 1.25; camTg.y = bases[fk] || 0; }
+    applyBand();
     applyCam();
   }
   let playTimer = null;
   function stageMode(on){
+    state.staging = on;
     $('stageBar').style.display = on ? 'flex' : 'none';
     if(on){ applyStage(1); toast('بنتا ہوا گھر — ▶ سے چلائیں یا سلائیڈر گھسیٹیں'); }
     else { applyStage(STAGES.length); }
@@ -498,8 +558,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
   function pickPoint(e){
     const nd = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(nd, camera);
-    const floors = state.floor === 'all' ? ['first', 'ground'] : [state.floor];
-    for(const fk of floors){ const base = fk === 'first' ? FH : 0; const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(base + 0.3)); const pt = new THREE.Vector3(); if(ray.ray.intersectPlane(pl, pt)) return { pt, fk }; }
+    const floors = state.floor === 'all' ? ['first', 'ground', 'basement'] : [state.floor];
+    for(const fk of floors){ const base = BASES[fk] || 0; const pl = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(base + 0.3)); const pt = new THREE.Vector3(); if(ray.ray.intersectPlane(pl, pt)) return { pt, fk }; }
     return null;
   }
   function pickRoom(e){
@@ -508,7 +568,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     const r = PLAN.rooms.find(r => r.fk === hit.fk && px >= r.x && px <= r.x + r.w && pz >= r.z && pz <= r.z + r.d);
     const info = $('info');
     if(!r){ info.style.display = 'none'; return; }
-    info.innerHTML = '<b style="font-size:16.5px">' + r.label + '</b> · ' + r.w.toFixed(1) + ' × ' + r.d.toFixed(1) + ' فٹ · رقبہ ' + Math.round(r.w * r.d) + ' مربع فٹ<br><span style="color:#9db8d6;font-size:13px">' + (hit.fk === 'first' ? 'پہلی منزل' : 'گراؤنڈ فلور') + ' — فنش بدلنے کے لیے مینیو سے دیواروں کا رنگ چنیں؛ فرنیچر آخری مرحلے میں آتا ہے۔</span>';
+    info.innerHTML = '<b style="font-size:16.5px">' + r.label + '</b> · ' + r.w.toFixed(1) + ' × ' + r.d.toFixed(1) + ' فٹ · رقبہ ' + Math.round(r.w * r.d) + ' مربع فٹ<br><span style="color:#9db8d6;font-size:13px">' + ({ basement: 'تہہ خانہ', ground: 'گراؤنڈ فلور', first: 'پہلی منزل' })[hit.fk] + ' — فنش بدلنے کے لیے مینیو سے دیواروں کا رنگ چنیں؛ فرنیچر آخری مرحلے میں آتا ہے۔</span>';
     info.style.display = 'block';
   }
   // ---------- summary ----------
@@ -518,14 +578,14 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     const marla = (m.plotArea / 272.25).toFixed(1);
     $('sumPanel').innerHTML = '<b style="font-size:17px">📋 خلاصہ</b>' + (spec.name ? ' — ' + spec.name : '') + (spec.loc ? ' · ' + spec.loc : '')
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
-      + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.floors + ' منزلیں)'
+      + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
       + '<br>پروگرام: بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen') + ' · لیونگ/لاؤنج ' + (cnt('living') + cnt('lounge')) + ' · اسٹور ' + cnt('store')
       + '<br>اہلِ خانہ: ' + m.familyTotal + ' افراد'
       + '<br>اسٹیک سیدھ: <span class="ok">✓ ' + m.stackOk + '/' + m.stackN + ' باتھ اوپر نیچے ایک لائن پر</span>'
       + (m.errs.length ? '<br><span class="bad">جانچ: ' + m.errs.join(' · ') + '</span>' : '<br><span class="ok">جانچ: کوئی اوورلیپ نہیں، سب کمرے حدود کے اندر ✓</span>')
       + m.warnings.map(w => '<br><span class="warn">⚠ ' + w + '</span>').join('')
       + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ: روپے ' + (m.greyBand[0] / 1e7).toFixed(2) + ' – ' + (m.greyBand[1] / 1e7).toFixed(2) + ' کروڑ</b>'
-      + '<br><span style="color:#9db8d6;font-size:13px">حساب: ڈھکا رقبہ × 3,000–3,300 روپے/مربع فٹ (بینچ مارک لاہور، اکتوبر 2026)۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
+      + '<br><span style="color:#9db8d6;font-size:13px">حساب: اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ' + (m.basement ? ' · تہہ خانہ × 4,000–4,600 روپے/مربع فٹ' : '') + ' (بینچ مارک لاہور، اکتوبر 2026)۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
       + '<br><button onclick="document.getElementById(\'sumPanel\').style.display=\'none\'" style="margin-top:8px">بند کریں</button>';
   }
   // ---------- labels + render loop ----------
@@ -534,7 +594,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     requestAnimationFrame(animate);
     if(PLAN && HOUSE){
       for(const d of labelDivs){
-        const r = d._room; const base = r.fk === 'first' ? FH : 0;
+        const r = d._room; const base = BASES[r.fk] || 0;
         v3.set(MX(r.x + r.w / 2), base + 5.6, MZ(r.z + r.d / 2)).project(camera);
         if(v3.z > 1 || !(state.floor === 'all' || d.dataset.fk === state.floor)){ d.style.display = 'none'; continue; }
         d.style.display = 'block';
@@ -550,10 +610,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
     $('menuBtn').style.display = ''; $('modeGrp').style.display = ''; $('floorGrp').style.display = ''; $('labels').style.display = '';
     sizeRenderer();
     buildHouse(spec);
-    state.floor = 'ground';
+    state.floor = 'all'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'all')); applyFloor();
     orb.sph.radius = Math.max(PLAN.meta.plotW, PLAN.meta.depth) * 1.55; orb.sph.phi = 1.02; orb.sph.theta = 2.55; camTg.set(0, 3, 0);
     applyCam();
-    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES };
+    window.__STUDIO = { get PLAN(){ return PLAN; }, spec, applyStage, STAGES: () => STAGES, counts: () => { const h = {}; if(HOUSE) HOUSE.traverse(m => { if(m.userData.st != null){ const k = 'st' + m.userData.st; h[k] = h[k] || [0, 0]; h[k][0]++; if(m.visible) h[k][1]++; } }); return h; } };
   };
   sizeRenderer(); applyCam(); animate();
 })();
