@@ -3268,5 +3268,106 @@ buildFrame();
     if(lp && performance.now() - lp.t0 >= 520){ const pt = lp; lp = null; fireLongPress(pt); }
   })();
 })();
+
+// ================= Explorer P2 bundle 1 — search · bookmarks · screenshot =================
+// Search flies to a room and opens its card (comprehension first: find the
+// kitchen/stairs/bedroom by NAME). Bookmarks save camera views on this
+// device. Screenshot downloads the current view as a PNG for WhatsApp.
+(function p2(){
+  const drawer = document.getElementById('menuDrawer');
+  if(!drawer) return;
+  const TYPE_UR = { bed: 'بیڈ روم', bath: 'باتھ', kitchen: 'کچن', hall: 'ہال', study: 'اسٹڈی · مطالعہ', court: 'صحن · روشن دان', store: 'اسٹور', core: 'سیڑھی کور', veranda: 'برآمدہ', circ: 'راستہ · گیلری' };
+  const TYPE_EN = { bed: 'bed bedroom', bath: 'bath washroom toilet', kitchen: 'kitchen', hall: 'hall', study: 'study', court: 'court courtyard', store: 'store', core: 'stair stairs core', veranda: 'veranda', circ: 'gallery passage' };
+  const FK_UR = { basement: 'تہہ خانہ', ground: 'گراؤنڈ', first: 'پہلی منزل' };
+  const HF_UR = { N: 'شمالی', S: 'جنوبی' };
+  function roomLabel(rec){
+    let t = TYPE_UR[rec.r[6]] || rec.r[4];
+    if(rec.r[6] === 'living') t = rec.r[4] === 'LOUNGE' ? 'لاؤنج' : 'لیونگ روم';
+    const w = Math.round((rec.r[1] - rec.r[0]) * 10) / 10, d = Math.round((rec.r[3] - rec.r[2]) * 10) / 10;
+    return t + ' — ' + FK_UR[rec.fk] + ' · ' + HF_UR[rec.half] + ' (' + w + '×' + d + ')';
+  }
+  function roomAlias(rec){
+    let t = (TYPE_EN[rec.r[6]] || '') + ' ' + rec.r[4].toLowerCase();
+    if(rec.r[6] === 'living') t += rec.r[4] === 'LOUNGE' ? ' lounge' : ' living drawing';
+    return t;
+  }
+  const sec = document.createElement('div');
+  sec.innerHTML = '<h4>🔎 تلاش و محفوظ مناظر</h4>'
+    + '<input id="srchIn" type="text" placeholder="کمرہ تلاش کریں — مثلاً کچن، سیڑھی، بیڈ روم…" style="width:100%;font-family:inherit;font-size:14.5px;line-height:2;padding:4px 10px;border-radius:10px;border:1px solid #2b4d82;background:#12305e;color:#EAF3EF">'
+    + '<div id="srchRes"></div>'
+    + '<button id="shotBtn">📸 اسکرین شاٹ — تصویر محفوظ کریں</button>'
+    + '<button id="bmSave">📍 موجودہ منظر بک مارک کریں</button>'
+    + '<div id="bmList"></div>';
+  drawer.appendChild(sec);
+  const res = sec.querySelector('#srchRes');
+  function doSearch(q){
+    q = (q || '').trim().toLowerCase();
+    res.innerHTML = '';
+    if(!q) return [];
+    const hits = ROOMS.filter(rec => roomLabel(rec).includes(q) || roomAlias(rec).includes(q)).slice(0, 8);
+    for(const rec of hits){
+      const b = document.createElement('button');
+      b.textContent = '➤ ' + roomLabel(rec);
+      b.onclick = () => gotoRoom(rec);
+      res.appendChild(b);
+    }
+    if(!hits.length) res.innerHTML = '<div style="font-size:13px;color:#A9B8CC;line-height:2;padding:2px 4px">کوئی کمرہ نہیں ملا — اور لفظ آزمائیں (کچن، باتھ، سیڑھی، صحن…)</div>';
+    return hits;
+  }
+  function gotoRoom(rec){
+    drawer.classList.remove('open');
+    if(state.mode === 'walk') setMode('model');
+    setFloor(rec.fk);
+    showRoom(rec);
+    const cx = (rec.R.x0 + rec.R.x1) / 2, cz = (rec.R.z0 + rec.R.z1) / 2, base = BASE[rec.fk];
+    const off = Math.max(rec.R.x1 - rec.R.x0, rec.R.z1 - rec.R.z0) * 1.05 + 9;
+    tweenCam(new THREE.Vector3(cx - off, base + off * 0.8, cz + off), new THREE.Vector3(cx, base + 3.5, cz), 900);
+  }
+  sec.querySelector('#srchIn').addEventListener('input', e => doSearch(e.target.value));
+  function shotData(){ renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); }
+  sec.querySelector('#shotBtn').onclick = () => {
+    try {
+      const a = document.createElement('a');
+      a.href = shotData(); a.download = 'imran-house-view.png'; a.click();
+      toast('📸 تصویر محفوظ ہو گئی — واٹس ایپ پر بھیجنے کے لیے تیار');
+    } catch(e){ toast('اسکرین شاٹ نہیں بن سکی — دوبارہ کوشش کریں'); }
+  };
+  // bookmarks: presets + this device's saved views
+  const PRESETS = [
+    { name: '🏠 اگلا رخ — سڑک سے', pos: [-105, 24, 0], tg: [0, 15, 0] },
+    { name: '🛰 اوپر سے — پورا نقشہ', pos: [0.5, 125, 0.5], tg: [0, 0, 0] },
+    { name: '🌳 پچھلا صحن — مغرب سے', pos: [100, 26, -34], tg: [8, 10, 0] }
+  ];
+  const bmList = sec.querySelector('#bmList');
+  function loadBm(){ try { return JSON.parse(localStorage.getItem('ih_bm_v1') || '[]'); } catch(e){ return []; } }
+  function saveBm(list){ try { localStorage.setItem('ih_bm_v1', JSON.stringify(list)); } catch(e){} }
+  function renderBm(){
+    bmList.innerHTML = '';
+    const all = PRESETS.map(p => ({ ...p, preset: true })).concat(loadBm());
+    for(const bm of all){
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:5px;align-items:stretch';
+      const b = document.createElement('button');
+      b.textContent = bm.name; b.style.flex = '1';
+      b.onclick = () => { drawer.classList.remove('open'); tweenCam(new THREE.Vector3(...bm.pos), new THREE.Vector3(...bm.tg), 900); };
+      row.appendChild(b);
+      if(!bm.preset){
+        const del = document.createElement('button');
+        del.textContent = '✕'; del.style.width = '44px'; del.style.flex = 'none';
+        del.onclick = () => { saveBm(loadBm().filter(x => x.name !== bm.name)); renderBm(); };
+        row.appendChild(del);
+      }
+      bmList.appendChild(row);
+    }
+  }
+  sec.querySelector('#bmSave').onclick = () => {
+    const list = loadBm();
+    const bm = { name: '📍 میرا منظر ' + (list.length + 1), pos: camera.position.toArray(), tg: camTarget.toArray() };
+    list.push(bm); saveBm(list); renderBm();
+    toast('📍 منظر محفوظ — مینیو میں «' + bm.name + '» سے واپس یہیں آئیں');
+  };
+  renderBm();
+  window.P2 = { search: doSearch, gotoRoom, shotData, bmCount: () => loadBm().length };
+})();
 </script>
 </body></html>
