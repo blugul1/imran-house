@@ -3311,7 +3311,15 @@ buildFrame();
       b.onclick = () => gotoRoom(rec);
       res.appendChild(b);
     }
-    if(!hits.length) res.innerHTML = '<div style="font-size:13px;color:#A9B8CC;line-height:2;padding:2px 4px">کوئی کمرہ نہیں ملا — اور لفظ آزمائیں (کچن، باتھ، سیڑھی، صحن…)</div>';
+    // doors too: «دروازہ» / 'door' lists them; a D-code (D1…D6) filters by type
+    const doorHits = doorSearch(q);
+    for(const dr of doorHits){
+      const b = document.createElement('button');
+      b.textContent = '🚪 دروازہ ' + dr.d[3] + ' — ' + FK_UR[dr.fk] + ' · ' + HF_UR[dr.half];
+      b.onclick = () => gotoDoor(dr);
+      res.appendChild(b);
+    }
+    if(!hits.length && !doorHits.length) res.innerHTML = '<div style="font-size:13px;color:#A9B8CC;line-height:2;padding:2px 4px">کوئی کمرہ نہیں ملا — اور لفظ آزمائیں (کچن، باتھ، سیڑھی، صحن، دروازہ…)</div>';
     return hits;
   }
   function gotoRoom(rec){
@@ -3322,6 +3330,21 @@ buildFrame();
     const cx = (rec.R.x0 + rec.R.x1) / 2, cz = (rec.R.z0 + rec.R.z1) / 2, base = BASE[rec.fk];
     const off = Math.max(rec.R.x1 - rec.R.x0, rec.R.z1 - rec.R.z0) * 1.05 + 9;
     tweenCam(new THREE.Vector3(cx - off, base + off * 0.8, cz + off), new THREE.Vector3(cx, base + 3.5, cz), 900);
+  }
+  function doorSearch(q){
+    if(!/^d[1-6]$/.test(q) && !q.includes('door') && !q.includes('دروازہ')) return [];
+    return DOORRECS.filter(dr => /^d[1-6]$/.test(q) ? dr.d[3].toLowerCase() === q : true).slice(0, 8);
+  }
+  function gotoDoor(dr){
+    drawer.classList.remove('open');
+    if(state.mode === 'walk') setMode('model');
+    setFloor(dr.fk);
+    showDoor(dr);
+    const idx = DOORRECS.indexOf(dr), mesh = DOORMESHES[idx];
+    if(mesh){
+      const wp = new THREE.Vector3(); mesh.getWorldPosition(wp);
+      tweenCam(new THREE.Vector3(wp.x - 13, wp.y + 8, wp.z + 13), wp, 900);
+    }
   }
   sec.querySelector('#srchIn').addEventListener('input', e => doSearch(e.target.value));
   function shotData(){ renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); }
@@ -3367,7 +3390,7 @@ buildFrame();
     toast('📍 منظر محفوظ — مینیو میں «' + bm.name + '» سے واپس یہیں آئیں');
   };
   renderBm();
-  window.P2 = { search: doSearch, gotoRoom, shotData, bmCount: () => loadBm().length };
+  window.P2 = { search: doSearch, gotoRoom, doorSearch, gotoDoor, shotData, bmCount: () => loadBm().length };
 })();
 
 // ================= Explorer P2 bundle 2 — section plane · marble veining =================

@@ -744,6 +744,16 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     + ['#e9e2d2', '#efe6d4', '#b9cdb4', '#bcccd8', '#e3c8c2'].map(c => '<button class="sw" data-paint="' + c + '" style="background:' + c + '"></button>').join('') + '</div>'
     + '<h4>🔍 جانچیں</h4><button id="mSummary">📋 خلاصہ و تخمینہ</button>'
     + '<h4>⚙️ دیگر</h4><button id="mNew">↩ نیا نقشہ (فارم)</button>';
+  drawer.insertAdjacentHTML('beforeend', '<h4>📸 تصویر</h4><button id="mShot">📸 اسکرین شاٹ — تصویر محفوظ کریں</button>');
+  drawer.querySelector('#mShot').onclick = () => {
+    try {
+      renderer.render(scene, camera);
+      const a = document.createElement('a');
+      a.href = renderer.domElement.toDataURL('image/png'); a.download = 'client-house-view.png'; a.click();
+      toast('📸 تصویر محفوظ ہو گئی — واٹس ایپ پر بھیجنے کے لیے تیار');
+    } catch(e){ toast('اسکرین شاٹ نہیں بن سکی — دوبارہ کوشش کریں'); }
+  };
+  window.__STUDIO_SHOT = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
   $('menuBtn').onclick = () => drawer.classList.toggle('open');
   drawer.addEventListener('click', e => { if(e.target.closest('button') && !e.target.dataset.paint) setTimeout(() => drawer.classList.remove('open'), 80); });
   drawer.querySelectorAll('[data-paint]').forEach(b => b.onclick = () => { MAT.plaster.color.set(b.dataset.paint); toast('دیواروں کا رنگ بدل گیا'); });
