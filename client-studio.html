@@ -609,7 +609,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   // orbit (drag / wheel / pinch — same gesture family as the Explorer)
   const orb = { sph: new THREE.Spherical(120, 1.05, 0.7) };
   const camTg = new THREE.Vector3(0, 3, 0);
-  function applyCam(){ const o = new THREE.Vector3().setFromSpherical(orb.sph); camera.position.copy(camTg).add(o); camera.lookAt(camTg); }
+  function applyCam(){ if(!isFinite(camTg.x) || !isFinite(camTg.y) || !isFinite(camTg.z)) camTg.set(0, 3, 0); if(!isFinite(orb.sph.radius) || orb.sph.radius <= 0) orb.sph.radius = 120; const o = new THREE.Vector3().setFromSpherical(orb.sph); camera.position.copy(camTg).add(o); camera.lookAt(camTg); }
   const cvs = renderer.domElement, pointers = new Map();
   let pinchD = 0, dragMoved = 0, downAt = null;
   cvs.addEventListener('pointerdown', e => { cvs.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); dragMoved = 0; downAt = { x: e.clientX, y: e.clientY, t: performance.now() };
@@ -621,7 +621,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     applyCam(); });
   cvs.addEventListener('pointerup', e => { pointers.delete(e.pointerId); if(downAt && dragMoved < 6 && performance.now() - downAt.t < 450) pickRoom(e); });
   cvs.addEventListener('wheel', e => { e.preventDefault(); orb.sph.radius = Math.max(2.5, Math.min(320, orb.sph.radius * Math.exp(e.deltaY * 0.0011))); applyCam(); }, { passive: false });
-  cvs.addEventListener('dblclick', e => { const pt = pickPoint(e); if(pt){ camTg.x = pt.x; camTg.z = pt.z; applyCam(); } });
+  cvs.addEventListener('dblclick', e => { const hit = pickPoint(e); if(!hit || !PLAN) return; const m = PLAN.meta; camTg.x = Math.max(-m.plotW / 2 - 4, Math.min(m.plotW / 2 + 4, hit.pt.x)); camTg.z = Math.max(-m.depth / 2 - 4, Math.min(m.depth / 2 + 4, hit.pt.z)); applyCam(); });
   // ---------- state ----------
   const state = { mode: 'model', floor: 'ground', stage: null, dusk: false, staging: false };
   let PLAN = null, HOUSE = null, STAGES = [], labelDivs = [];
