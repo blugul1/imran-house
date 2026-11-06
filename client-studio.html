@@ -524,7 +524,16 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       for(let cx2 = -1; cx2 < 5; cx2++){ v.fillRect(off + cx2 * (bw + 3) + 1.5, row * (bh + 3) + 1.5, bw, bh); } }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 1); return t;
   }
+  function marbleTextureS(){
+    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+    v.fillStyle = '#f2f1ec'; v.fillRect(0,0,256,256);
+    for(let i = 0; i < 26; i++){ const g = 225 + Math.floor(Math.random()*22); v.fillStyle = 'rgba(' + g + ',' + g + ',' + (g - 4) + ',0.35)'; v.beginPath(); v.ellipse(Math.random()*256, Math.random()*256, 22 + Math.random()*46, 12 + Math.random()*26, Math.random()*3, 0, Math.PI*2); v.fill(); }
+    v.strokeStyle = 'rgba(122,130,140,0.5)';
+    for(let i = 0; i < 7; i++){ v.lineWidth = 0.8 + Math.random()*1.4; v.beginPath(); let x = Math.random()*256, y = 0; v.moveTo(x, y); while(y < 256){ x += (Math.random()*36 - 18); y += 22 + Math.random()*26; v.lineTo(x, y); } v.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); return t;
+  }
   const VELTEXS = velvetTextureS();
+  MAT.marble = M(0xffffff, { map: marbleTextureS() });
   MAT.walnut = M(0xffffff, { map: walnutTextureS() });
   MAT.carved = M(0xffffff, { map: carvedTextureS() });
   MAT.velvet = M(0x116149, { map: VELTEXS });
@@ -715,7 +724,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       buildWalls(fk, base, stW);
       for(const r of plan.rooms.filter(r => r.fk === fk)){
         const cx = MX(r.x + r.w / 2), cz = MZ(r.z + r.d / 2);
-        if(r.type !== 'court'){ const pl = B(HOUSE, cx, base + 0.06, cz, r.w - 0.1, 0.12, r.d - 0.1, M(TINT[r.type] || 0xcccccc), stFloor); pl.userData.room = r; pl.userData.isPlate = true; }
+        if(r.type !== 'court'){ const pl = B(HOUSE, cx, base + 0.06, cz, r.w - 0.1, 0.12, r.d - 0.1, M(TINT[r.type] || 0xcccccc), stFloor); pl.userData.room = r; pl.userData.isPlate = true; pl.userData.defMat = pl.material; r._plate = pl; const _fk = FIN[roomKey(r)]; if(_fk && _fk !== 'std') pl.material = FLOOR_FIN[_fk](); }
         else { B(HOUSE, cx, base + 0.04, cz, r.w - 0.2, 0.08, r.d - 0.2, MAT.green, stFloor); const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 3.4, 6), MAT.wood2); tr.position.set(cx, base + 1.7, cz); tr.userData.st = stFloor; HOUSE.add(tr); const lv = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 6), MAT.green); lv.position.set(cx, base + 4.4, cz); lv.userData.st = stFloor; HOUSE.add(lv); }
         if(r.type === 'hall' && fk !== 'first'){
           const steps = 16, sw = Math.min(3.4, r.w / 2 - 0.3);
@@ -777,6 +786,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     // the same standard as the Explorer): room names/sizes now live in the
     // numbered side list built by buildRoomList() below — never as tags
     // hovering over the house. labelDivs stays empty on purpose.
+    refreshFinRooms();
     $('flBase').style.display = hasB ? '' : 'none';
     if(!hasB && state.floor === 'basement'){ state.floor = 'ground'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'ground')); }
     applyStage(STAGES.length);
@@ -867,6 +877,40 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     });
     if(curSpec && PLAN) summary(curSpec);
   }
+  // ---------- per-room floor finishes (Client Premium CP-2: catalogue-style demo) ----------
+  const FLOOR_FIN_NAMES = { std: 'معیاری', marble: 'سنگِ مرمر', tile: 'ٹائل', wood: 'لکڑی', carpet: 'قالین' };
+  const FLOOR_FIN = { marble: () => MAT.marble, tile: () => MAT.subway, wood: () => MAT.walnut, carpet: () => rugMaterialS(0x74353a) };
+  const FIN = {};
+  const roomKey = r => r.fk + '|' + r.type + '|' + Math.round(r.x) + '|' + Math.round(r.z);
+  let finSelIdx = -1;
+  function refreshFinChips(){
+    document.querySelectorAll('[data-fin]').forEach(b => {
+      const r = PLAN && finSelIdx >= 0 ? PLAN.rooms[finSelIdx] : null;
+      const on = r && (FIN[roomKey(r)] || 'std') === b.dataset.fin;
+      b.style.background = on ? '#3DAB94' : '#12305e';
+      b.style.color = on ? '#0A1A3B' : '#EAF3EF';
+    });
+  }
+  function refreshFinList(){
+    const el = $('finList'); if(!el || !PLAN) return;
+    const rows = [];
+    for(const r of PLAN.rooms){ const k = FIN[roomKey(r)]; if(k && k !== 'std') rows.push(r.label + ' (' + ({ basement: 'تہہ خانہ', ground: 'گراؤنڈ', first: 'پہلی منزل' })[r.fk] + ') — ' + FLOOR_FIN_NAMES[k]); }
+    el.innerHTML = rows.length ? 'بدلی گئی فنش:<br>' + rows.join('<br>') : '';
+  }
+  function refreshFinRooms(){
+    const sel = $('finRoom'); if(!sel || !PLAN) return;
+    sel.innerHTML = PLAN.rooms.map((r, i) => r.type === 'court' ? '' : '<option value="' + i + '">' + r.label + ' — ' + ({ basement: 'تہہ خانہ', ground: 'گراؤنڈ فلور', first: 'پہلی منزل' })[r.fk] + ' · ' + Math.round(r.w) + '×' + Math.round(r.d) + ' فٹ</option>').join('');
+    finSelIdx = PLAN.rooms.findIndex(r => r.type !== 'court');
+    sel.value = String(finSelIdx);
+    refreshFinChips(); refreshFinList();
+  }
+  function applyFin(r, key){
+    if(!r || r.type === 'court') return;
+    FIN[roomKey(r)] = key;
+    if(r._plate) r._plate.material = key === 'std' ? r._plate.userData.defMat : FLOOR_FIN[key]();
+    refreshFinChips(); refreshFinList();
+    if(curSpec && PLAN) summary(curSpec);
+  }
   // ---------- stages / floor / mode ----------
   const _wv = new THREE.Vector3();
   function bandOf(m){ m.getWorldPosition(_wv); return _wv.y < -0.5 ? 'basement' : (_wv.y < FH - 0.5 ? 'ground' : (_wv.y < 2 * FH - 0.5 ? 'first' : 'roof')); }
@@ -916,6 +960,12 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     + ['#e9e2d2', '#efe6d4', '#b9cdb4', '#bcccd8', '#e3c8c2'].map(c => '<button class="sw" data-paint="' + c + '" style="background:' + c + '"></button>').join('') + '</div>'
     + '<h4>🔍 جانچیں</h4><button id="mSummary">📋 خلاصہ و تخمینہ</button>'
     + '<h4>⚙️ دیگر</h4><button id="mNew">↩ نیا نقشہ (فارم)</button>';
+  drawer.insertAdjacentHTML('beforeend', '<h4>✨ کمرے کی فنش — کیٹلاگ (ڈیمو)</h4>'
+    + '<div style="font-size:13px;color:#9db8d6;line-height:1.9">کمرہ چنیں، پھر اس کے فرش کی فنش بدلیں — فرق فوراً گھر میں نظر آئے گا۔<br><span style="color:#d8b25c">یہ ڈیمو آئٹمز ہیں — اصل کیٹلاگ میں ہر فنش کے ساتھ بھمبر کی دکان کا نام، تاریخ اور تصدیق شدہ ریٹ لکھا ہوگا۔</span></div>'
+    + '<select id="finRoom" style="width:100%;margin:6px 0;padding:9px;border-radius:10px;background:#0d2247;color:#EAF3EF;border:1px solid #2b4d82;font-family:inherit;font-size:14px"></select>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px">'
+    + Object.keys(FLOOR_FIN_NAMES).map(k => '<button data-fin="' + k + '" style="border:1px solid #2b4d82;border-radius:999px;padding:6px 12px;font-family:inherit;font-size:13px;cursor:pointer;background:#12305e;color:#EAF3EF">' + FLOOR_FIN_NAMES[k] + '</button>').join('') + '</div>'
+    + '<div id="finList" style="font-size:12.5px;color:#BFE3D8;line-height:1.8"></div>');
   drawer.insertAdjacentHTML('beforeend', '<h4>📸 تصویر</h4><button id="mShot">📸 اسکرین شاٹ — تصویر محفوظ کریں</button>');
   drawer.querySelector('#mShot').onclick = () => {
     try {
@@ -927,8 +977,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   };
   window.__STUDIO_SHOT = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
   $('menuBtn').onclick = () => drawer.classList.toggle('open');
-  drawer.addEventListener('click', e => { if(e.target.closest('button') && !e.target.dataset.paint) setTimeout(() => drawer.classList.remove('open'), 80); });
+  drawer.addEventListener('click', e => { if(e.target.closest('button') && !e.target.dataset.paint && !e.target.dataset.fin) setTimeout(() => drawer.classList.remove('open'), 80); });
   drawer.querySelectorAll('[data-paint]').forEach(b => b.onclick = () => { MAT.plaster.color.set(b.dataset.paint); toast('دیواروں کا رنگ بدل گیا'); });
+  drawer.querySelector('#finRoom').addEventListener('change', e => { finSelIdx = parseInt(e.target.value, 10); refreshFinChips(); });
+  drawer.querySelectorAll('[data-fin]').forEach(b => b.onclick = () => { if(!PLAN || finSelIdx < 0) return; const r = PLAN.rooms[finSelIdx]; applyFin(r, b.dataset.fin); toast(r.label + ' — فرش: ' + FLOOR_FIN_NAMES[b.dataset.fin]); });
   // delegated menu buttons (bound after innerHTML)
   drawer.querySelector('#mStages').onclick = () => stageMode(true);
   drawer.querySelector('#mSummary').onclick = () => { $('sumPanel').style.display = $('sumPanel').style.display === 'block' ? 'none' : 'block'; };
@@ -965,6 +1017,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
       + '<br>باہر کی لک (ایلیویشن): <b>' + ELEV_NAMES[ELEV] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر «باہر کی لک» بٹنوں سے اسٹائل بدل کر فرق دیکھیں — نقشہ و پیمائش وہی رہتی ہے)</span>'
+      + (Object.keys(FIN).filter(k => FIN[k] !== 'std').length ? '<br>فنش انتخاب: <b>' + Object.keys(FIN).filter(k => FIN[k] !== 'std').length + ' کمروں</b> میں فرش کی فنش بدلی گئی — <span style="color:#d8b25c">ڈیمو فنش؛ ریٹ اصل کیٹلاگ سے آئے گا</span>' : '')
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
       + '<br>پروگرام: بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen') + ' · لیونگ/لاؤنج ' + (cnt('living') + cnt('lounge')) + ' · اسٹور ' + cnt('store')
       + '<br>اہلِ خانہ: ' + m.familyTotal + ' افراد'
