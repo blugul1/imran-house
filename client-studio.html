@@ -115,9 +115,11 @@
     <label class="chk"><input type="checkbox" id="f_porch" checked> کار پورچ</label>
     <label class="chk"><input type="checkbox" id="f_study"> مطالعہ / ہوم اسکول کمرہ</label>
     <label class="chk"><input type="checkbox" id="f_basement"> تہہ خانہ (بیسمنٹ) بھی ہو — ڈرائنگ ہال و اضافی کمرے نیچے</label>
+    <label class="f" style="margin-top:6px">ترتیب (لے آؤٹ فیملی) — اندر کا نقشہ کس انداز کا ہو؟<select id="f_family"><option value="guest" selected>مہمان آگے — ڈرائنگ روم اگلی قطار میں (معیاری)</option><option value="family">خاندان آگے — ڈرائنگ درمیانی قطار میں، بیڈ روم آگے</option><option value="court">صحن محور — صحن گھر کے درمیان</option></select></label>
+    <label class="chk"><input type="checkbox" id="f_mirror"> نقشہ الٹا (آئینہ) — مشرق/مغرب بدل کر دیکھیں</label>
   </fieldset>
   <div style="background:#12305e;border:1px solid #2b4d82;border-radius:12px;padding:10px 14px;margin:10px 0;font-size:13.5px;line-height:2;color:#c8d9ee">
-    <b style="color:#8fd8c8">آگے کیا ملے گا:</b> یہی صفحہ آپ کے سامنے 2D + 3D نقشہ بنائے گا، پھر تعمیر کے مراحل قدم بہ قدم، آخر میں فرنشڈ گھر۔ ساتھ خودکار جانچ (QA) کی رپورٹ، گرے ڈھانچے کی لاگت کا تخمینہ بینڈ، اور کمروں کی فہرست نمبر و سائز کے ساتھ۔ نقشہ بننے کے بعد تین آپشن بھی آئیں گے: معیاری، بڑے کمرے، بڑا صحن۔<br>
+    <b style="color:#8fd8c8">آگے کیا ملے گا:</b> یہی صفحہ آپ کے سامنے 2D + 3D نقشہ بنائے گا، پھر تعمیر کے مراحل قدم بہ قدم، آخر میں فرنشڈ گھر۔ ساتھ خودکار جانچ (QA) کی رپورٹ، گرے ڈھانچے کی لاگت کا تخمینہ بینڈ، اور کمروں کی فہرست نمبر و سائز کے ساتھ۔ نقشہ بننے کے بعد تین آپشن بھی آئیں گے: معیاری، بڑے کمرے، بڑا صحن۔ ترتیب کے تین انداز (مہمان آگے، خاندان آگے، صحن محور) فارم میں منتخب ہوتے ہیں — ہر خاندان کا نقشہ اس کی پسند کا۔<br>
     <b style="color:#8fd8c8">ہر نقشے میں ہمیشہ شامل:</b> ہر منزل پر کچن (کھڑکی والی دیوار پر)، روشن دان / صحن، گیلری و سیڑھی ہال، اور اوپر نیچے ایک سیدھ میں باتھ روم (اسٹیک) — یہ چیزیں اختیاری نہیں، اصول ہیں۔
   </div>
   <button id="buildBtn">🏠 نقشہ بنائیں — گھر بنتا دیکھیں</button>
@@ -188,6 +190,7 @@ function generatePlan(spec){
   const warnings = [];
   if(W < 20) warnings.push('پلاٹ کی چوڑائی کم ہے — کمرے تنگ ہوں گے، ماہر سے جائزہ ضروری');
   if(D < 34) warnings.push('پلاٹ کی گہرائی کم ہے — پروگرام گھٹایا گیا ہے');
+  if(D < 20) warnings.push('پلاٹ کی گہرائی ناکافی ہے (' + Math.max(0, Math.round(D)) + ' فٹ قابلِ تعمیر) — اس پیمائش پر قابلِ اعتماد نقشہ نہیں بن سکتا؛ براہ کرم پیمائش دوبارہ ملائیں');
   if(hasB) warnings.push('تہہ خانہ: روشنی لائٹ ویل و اگلے حصے سے آئے گی — واٹر پروفنگ، نکاسی و ہوا کی ماہر تصدیق لازمی');
   if(P.front !== P.back) warnings.push('ٹیڑھا (ٹریپیزوئیڈ) پلاٹ: ٹیڑھ مشرقی کنارے پر لی گئی ہے؛ کمرے اندرونی مستطیل میں ہیں، اضافی جگہ گلی/صحن میں آتی ہے');
   if(Math.max(P.front, P.back) / Math.min(P.front, P.back) > 1.6) warnings.push('سامنے اور پیچھے کی پیمائش میں بہت بڑا فرق ہے — ایک بار اصل پلاٹ سے دوبارہ ملا لیں؛ غلط پیمائش پر نقشہ بھی غلط بنے گا');
@@ -213,6 +216,17 @@ function generatePlan(spec){
   const courtD = variant === 'C' ? Math.max(7, Math.min(11, (zC1 - z0 - hallD) - 9)) : (variant === 'B' ? 6 : 7);
   if(variant === 'B') warnings.push('آپشن B — بڑے کمرے: بیڈ روم گہرے کیے گئے ہیں؛ بدلے میں اگلی قطار اور روشن دان قدرے چھوٹے ہیں');
   if(variant === 'C') warnings.push('آپشن C — بڑا صحن: پچھلا صحن ' + courtD + ' فٹ کشادہ؛ گیلری اسی قدر چھوٹی ہے');
+  // Layout FAMILIES (owner's order 7 Nov 2026 — the ARRANGEMENT itself
+  // varies, not only room sizes): guest = the frozen standard; family =
+  // drawing room moves to the middle row and a bed comes forward; court =
+  // the courtyard sits mid-spine instead of at the back. A/B/C emphasis
+  // applies inside every family. Guards fall back honestly with a warning.
+  const layout = spec.layout || 'guest';
+  const courtMid = layout === 'court' && (zC1 - zB1) >= 9;
+  if(layout === 'court' && !courtMid) warnings.push('ترتیب «صحن محور»: پچھلی قطار تنگ ہے — درمیانی صحن نہیں سما سکا، صحن پیچھے ہی رکھا گیا ہے');
+  if(layout === 'court' && courtMid) warnings.push('ترتیب «صحن محور»: صحن گھر کے درمیان ہے — ارد گرد کے کمروں کو روشنی و ہوا وہیں سے ملتی ہے');
+  if(layout === 'family' && N.drawing && colW >= 8) warnings.push('ترتیب «خاندان آگے»: ڈرائنگ روم درمیانی قطار میں ہے (مہمان گیلری سے ہو کر جائیں گے) اور بیڈ روم اگلی قطار میں آ گیا ہے — اوپری منزل معیاری ترتیب پر رہتی ہے');
+  if(layout === 'family' && N.drawing && colW < 8) warnings.push('ترتیب «خاندان آگے»: پلاٹ تنگ ہے — ڈرائنگ درمیان میں نہیں سما سکا، اگلی قطار میں ہی رکھا گیا ہے');
   const rooms = [], doors = [], windows = [];
   let uid = 0;
   function room(fk, type, label, x, z, w, d, half){ const r = { id: 'r' + (uid++), fk, type, label, x, z, w, d, half }; rooms.push(r); return r; }
@@ -230,9 +244,17 @@ function generatePlan(spec){
     if(r.z + r.d >= z1 - 0.01) win(r.x + r.w / 2, r.z + r.d, 'N', r.type === 'bath' ? 2 : 4.5, r.type === 'bath');
   }
   function buildFloor(fk, top, isBase){
-    // circulation: stair hall (front spine) + gallery
+    // circulation: stair hall (front spine) + gallery; family «صحن محور»
+    // splits the gallery around a mid-spine court
     room(fk, 'hall', top ? 'سیڑھی ہال' : (isBase ? 'سیڑھی ہال' : 'داخلی ہال'), sx0, z0, spineW + 3, hallD, 'C');
-    room(fk, 'circ', 'گیلری', sx0, z0 + hallD, spineW, (zB1 - z0 - hallD) + (zC1 - zB1) - courtD, 'C');
+    if(courtMid){
+      const cd2 = Math.max(5, Math.min(courtD + 1, (zC1 - zB1) - 4));
+      room(fk, 'circ', 'گیلری', sx0, z0 + hallD, spineW, zB1 - (z0 + hallD), 'C');
+      room(fk, 'court', isBase ? 'لائٹ ویل (درمیان)' : (cd2 >= 8 ? 'درمیانی صحن' : 'روشن دان (درمیان)'), sx0, zB1, spineW, cd2, 'C');
+      if(zC1 - (zB1 + cd2) >= 1.5) room(fk, 'circ', 'گیلری', sx0, zB1 + cd2, spineW, zC1 - (zB1 + cd2), 'C');
+    } else {
+      room(fk, 'circ', 'گیلری', sx0, z0 + hallD, spineW, (zB1 - z0 - hallD) + (zC1 - zB1) - courtD, 'C');
+    }
     // Row A (front): basement west = drawing hall; ground = living; top = lounge
     const livA = isBase
       ? room(fk, 'drawing', 'ڈرائنگ ہال', x0, z0, colW - 1.5, rA, 'W')
@@ -249,9 +271,16 @@ function generatePlan(spec){
     } else {
       bedB2 = room(fk, 'bed', 'بیڈ روم 2', sx1, zA1, colW, rB, 'E');
     }
+    // Family «خاندان آگے» (ground floor only): the drawing room swaps with
+    // the middle-row west bed — the bed comes to the front row and guests
+    // are received mid-house, off the gallery. Bed count is unchanged.
+    if(layout === 'family' && !top && !isBase && N.drawing && bedB1.w >= 8){
+      drA.type = 'bed'; drA.label = 'بیڈ روم 1';
+      bedB1.type = 'drawing'; bedB1.label = 'ڈرائنگ روم';
+    }
     // Row C (back): kitchen west, court centre (open / lightwell in basement), bath+store east
     const kitC = room(fk, 'kitchen', 'کچن', x0, zB1, colW, zC1 - zB1, 'W');
-    room(fk, 'court', isBase ? 'لائٹ ویل' : (courtD >= 9 ? 'کھلا صحن' : 'روشن دان'), sx0, zC1 - courtD, spineW, courtD, 'C');
+    if(!courtMid) room(fk, 'court', isBase ? 'لائٹ ویل' : (courtD >= 9 ? 'کھلا صحن' : 'روشن دان'), sx0, zC1 - courtD, spineW, courtD, 'C');
     const bwC = Math.min(7, colW);
     // back-row bath depth clamps to the row itself — on shallow plots the
     // fixed 9 ft used to push the bath OUTSIDE the envelope (caught by the
@@ -270,6 +299,15 @@ function generatePlan(spec){
   buildFloor('ground', false, false);
   if(floors === 2) buildFloor('first', true, false);
   door((sx0 + sx1) / 2, z0, 'S', 3.6); // main entrance from porch
+  // Mirror option: flip the whole plan east<->west — rooms, doors, windows
+  // and their edge tags together, so validation and the stack check below
+  // judge the mirrored plan exactly as drawn.
+  if(spec.mirror){
+    for(const r of rooms){ r.x = x0 + (x1 - (r.x + r.w)); if(r.half === 'W') r.half = 'E'; else if(r.half === 'E') r.half = 'W'; }
+    for(const d of doors){ d.x = x0 + (x1 - d.x); if(d.wall === 'E') d.wall = 'W'; else if(d.wall === 'W') d.wall = 'E'; }
+    for(const w of windows){ w.x = x0 + (x1 - w.x); if(w.wall === 'E') w.wall = 'W'; else if(w.wall === 'W') w.wall = 'E'; }
+    warnings.push('نقشہ آئینہ (الٹا) بنایا گیا ہے — مشرقی و مغربی رخ آپس میں بدل گئے ہیں' + (P.front !== P.back ? '؛ ٹیڑھے پلاٹ کی ٹیڑھ اب مغربی کنارے پر ہے' : ''));
+  }
   const levelFks = hasB ? ['basement', 'ground', 'first'] : ['ground', 'first'];
   // validation: rooms inside envelope, no overlaps among solid rooms
   const errs = [];
@@ -302,8 +340,10 @@ function generatePlan(spec){
   const greyHi = covered * floors * 3300 + (hasB ? covered * 4600 : 0);
   // true plot polygon (plot coords: x from west edge, z from street/front):
   // west edge straight; the taper is carried on the east edge.
-  const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
-  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, variant } };
+  const plotPoly = spec.mirror
+    ? [ { x: plotW, z: 0 }, { x: plotW, z: depth }, { x: plotW - P.back, z: depth }, { x: plotW - P.front, z: 0 } ]
+    : [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
+  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, variant, layout, mirror: !!spec.mirror } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan };
 
@@ -471,6 +511,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       street: num('f_street'),
       budget: num('f_budget'), orient: $('f_orient').value,
       floors: +$('f_floors').value, basement: $('f_basement').checked,
+      layout: $('f_family').value, mirror: $('f_mirror').checked,
       family: { adults: num('f_adults'), children: num('f_children'), elders: num('f_elders') },
       needs: { bedrooms: +$('f_beds').value, baths: +$('f_baths').value, drawing: $('f_drawing').checked, carPorch: $('f_porch').checked, study: $('f_study').checked }
     };
@@ -589,6 +630,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   function B(parent, x, y, z, w, h, d, mat, st){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if(st != null) m.userData.st = st; parent.add(m); return m; }
   // ---------- build the house ----------
   const VARIANT_NAMES = { A: 'معیاری', B: 'بڑے کمرے', C: 'بڑا صحن' };
+  const FAMILY_NAMES = { guest: 'مہمان آگے', family: 'خاندان آگے', court: 'صحن محور' };
   let lastAutoSpec = null;
   // ---------- elevation styles (Client Premium CP-1: skin only, structure untouched) ----------
   const ELEV_NAMES = { modern: 'جدید', classic: 'کلاسیکی', kashmiri: 'کشمیری طرز' };
@@ -1076,6 +1118,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     $('sumPanel').innerHTML = '<b style="font-size:17px">📋 خلاصہ</b>' + (spec.name ? ' — ' + spec.name : '') + (spec.loc ? ' · ' + spec.loc : '')
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
+      + (m.layout ? '<br>ترتیب (فیملی): <b>' + FAMILY_NAMES[m.layout] + '</b>' + (m.mirror ? ' · <b>آئینہ (الٹا) نقشہ</b>' : '') + ' <span style="color:#9db8d6;font-size:12.5px">(ترتیب بدلنے کے لیے فارم سے نیا نقشہ بنائیں)</span>' : '')
       + '<br>باہر کی لک (ایلیویشن): <b>' + ELEV_NAMES[ELEV] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر «باہر کی لک» بٹنوں سے اسٹائل بدل کر فرق دیکھیں — نقشہ و پیمائش وہی رہتی ہے)</span>'
       + (Object.keys(FIN).filter(k => FIN[k] !== 'std').length ? '<br>فنش انتخاب: <b>' + Object.keys(FIN).filter(k => FIN[k] !== 'std').length + ' کمروں</b> میں فرش کی فنش بدلی گئی — <span style="color:#d8b25c">ڈیمو فنش؛ ریٹ اصل کیٹلاگ سے آئے گا</span>' : '')
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
