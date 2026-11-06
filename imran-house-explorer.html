@@ -258,6 +258,64 @@ function jaliTexture(){
 const JALIMAT = new THREE.MeshLambertMaterial({map: jaliTexture(), transparent: true, alphaTest: 0.32, side: THREE.DoubleSide});
 WOOD.map = WOODTEX; WOOD.needsUpdate = true;
 WOOD2.map = WOODTEX; WOOD2.needsUpdate = true;
+// === Furnished-state register v2 (owner references finish-ref-a/b/c, 1 Nov 2026):
+// carved Kashmiri walnut, deep emerald velvet, woven patterned rugs — procedural, zero file bytes ===
+function walnutTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+  v.fillStyle = '#8a5a33'; v.fillRect(0,0,256,256);
+  for(let i = 0; i < 70; i++){
+    const x = Math.random()*256, w = 0.6 + Math.random()*3.2, dark = Math.random() > 0.35;
+    v.strokeStyle = dark ? 'rgba(46,26,12,' + (0.08 + Math.random()*0.16) + ')' : 'rgba(214,164,110,' + (0.05 + Math.random()*0.1) + ')';
+    v.lineWidth = w; v.beginPath(); v.moveTo(x, -6);
+    v.bezierCurveTo(x + (Math.random()*12-6), 80, x + (Math.random()*12-6), 170, x + (Math.random()*10-5), 262); v.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+function carvedTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+  v.fillStyle = '#6e4525'; v.fillRect(0,0,256,256);
+  v.strokeStyle = 'rgba(38,20,8,0.55)'; v.lineWidth = 5; v.strokeRect(10,10,236,236);
+  v.strokeStyle = 'rgba(226,176,120,0.28)'; v.lineWidth = 2; v.strokeRect(17,17,222,222);
+  v.strokeStyle = 'rgba(38,20,8,0.5)'; v.lineWidth = 4;
+  for(const mp of [[64,64],[192,64],[64,192],[192,192],[128,128]]){
+    const mx = mp[0], my = mp[1];
+    v.beginPath(); v.arc(mx, my, 26, 0, Math.PI*2); v.stroke();
+    v.beginPath(); v.arc(mx, my, 13, 0, Math.PI*2); v.stroke();
+    for(let p = 0; p < 8; p++){ const a = p*Math.PI/4; v.beginPath(); v.moveTo(mx + Math.cos(a)*13, my + Math.sin(a)*13); v.quadraticCurveTo(mx + Math.cos(a)*24, my + Math.sin(a)*24, mx + Math.cos(a+0.6)*13, my + Math.sin(a+0.6)*13); v.stroke(); }
+    v.fillStyle = 'rgba(30,16,6,0.35)'; v.beginPath(); v.arc(mx, my, 4, 0, Math.PI*2); v.fill();
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+function velvetTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 128; const v = c.getContext('2d');
+  v.fillStyle = '#e8e8e8'; v.fillRect(0,0,128,128);
+  for(let i = 0; i < 2600; i++){ const g = 205 + Math.floor(Math.random()*50); v.fillStyle = 'rgba(' + g + ',' + g + ',' + g + ',0.5)'; v.fillRect(Math.random()*128, Math.random()*128, 1.6, 1.6); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3,3); return t;
+}
+const VELTEX = velvetTexture();
+const WALNUT = new THREE.MeshLambertMaterial({map: walnutTexture()});
+const CARVED = new THREE.MeshLambertMaterial({map: carvedTexture()});
+const VELVET = new THREE.MeshLambertMaterial({color: 0x116149, map: VELTEX});
+const VELVETS = new THREE.MeshLambertMaterial({color: 0x67785f, map: VELTEX});
+const LINEN = new THREE.MeshLambertMaterial({color: 0xf3ead6, map: VELTEX});
+const _rugCache = {};
+function rugMaterial(col){
+  const key = col.toString(16);
+  if(_rugCache[key]) return _rugCache[key];
+  const c = document.createElement('canvas'); c.width = 256; c.height = 320; const v = c.getContext('2d');
+  v.fillStyle = '#' + col.toString(16).padStart(6, '0'); v.fillRect(0,0,256,320);
+  v.strokeStyle = 'rgba(232,221,196,0.9)'; v.lineWidth = 10; v.strokeRect(14,14,228,292);
+  v.strokeStyle = 'rgba(232,221,196,0.55)'; v.lineWidth = 3; v.strokeRect(30,30,196,260);
+  v.save(); v.translate(128,160); v.rotate(Math.PI/4);
+  v.strokeStyle = 'rgba(232,221,196,0.85)'; v.lineWidth = 5; v.strokeRect(-52,-52,104,104);
+  v.strokeStyle = 'rgba(232,221,196,0.5)'; v.lineWidth = 3; v.strokeRect(-34,-34,68,68); v.restore();
+  v.fillStyle = 'rgba(232,221,196,0.75)';
+  for(const mp of [[128,52],[128,268],[52,160],[204,160],[128,160]]){ v.beginPath(); v.arc(mp[0], mp[1], 5, 0, Math.PI*2); v.fill(); }
+  for(let i = 0; i < 1600; i++){ v.fillStyle = 'rgba(0,0,0,' + (Math.random()*0.09) + ')'; v.fillRect(Math.random()*256, Math.random()*320, 2, 2); }
+  const m = new THREE.MeshLambertMaterial({map: new THREE.CanvasTexture(c)});
+  _rugCache[key] = m; return m;
+}
+let BEDCTR = 0;
 function poolAt(parent, x, base, z, r){
   const p = new THREE.Mesh(new THREE.CircleGeometry(r, 20), POOLMAT);
   p.rotation.x = -Math.PI/2; p.position.set(x, base + 0.17, z); p.renderOrder = 3; p.userData.keepMat = true; parent.add(p); return p;
@@ -338,28 +396,77 @@ function stripW(R, edge, f0, f1, depth){
 function bedAt(g, base, cx, cz, head){
   const long = 6.5, wide = 6; const horiz = (head==='E'||head==='W');
   const sx = horiz? long: wide, sz = horiz? wide: long;
-  box(g, cx, base+0.55, cz, sx, 1.1, sz, WOOD2);
-  box(g, cx, base+1.25, cz, sx*0.94, 0.35, sz*0.94, FAB);
+  const throwCol = THROWPAL[BEDCTR++ % THROWPAL.length];
+  box(g, cx, base+0.55, cz, sx, 1.1, sz, WALNUT);
+  box(g, cx, base+1.25, cz, sx*0.94, 0.35, sz*0.94, LINEN);
   const hx = head==='E'? cx-long/2+0.25 : head==='W'? cx+long/2-0.25 : cx;
   const hz = head==='N'? cz-wide/2+0.25 : head==='S'? cz+wide/2-0.25 : cz;
-  if(horiz) box(g, hx, base+1.9, cz, 0.5, 3.8, wide, WOOD); else box(g, cx, base+1.9, hz, wide, 3.8, 0.5, WOOD);
-  for(const s of [-1,1]){
-    if(horiz) box(g, hx + (head==='E'? 0.85 : -0.85), base+1.62, cz + s*wide/4, 1.7, 0.5, 2.2, WHITE);
-    else box(g, cx + s*wide/4, base+1.62, hz + (head==='N'? 0.85 : -0.85), 2.2, 0.5, 1.7, WHITE);
+  const fx = head==='E'? cx+long/2-0.25 : head==='W'? cx-long/2+0.25 : cx;
+  const fz = head==='N'? cz+wide/2-0.25 : head==='S'? cz-wide/2+0.25 : cz;
+  if(horiz){
+    box(g, hx, base+2.1, cz, 0.5, 4.2, wide, WALNUT);
+    box(g, hx + (head==='E'? 0.31 : -0.31), base+2.35, cz, 0.1, 3.1, wide*0.82, CARVED);
+    box(g, fx, base+1.15, cz, 0.42, 2.3, wide, WALNUT);
+    box(g, fx + (head==='E'? -0.27 : 0.27), base+1.3, cz, 0.1, 1.5, wide*0.82, CARVED);
+  } else {
+    box(g, cx, base+2.1, hz, wide, 4.2, 0.5, WALNUT);
+    box(g, cx, base+2.35, hz + (head==='N'? 0.31 : -0.31), wide*0.82, 3.1, 0.1, CARVED);
+    box(g, cx, base+1.15, fz, wide, 2.3, 0.42, WALNUT);
+    box(g, cx, base+1.3, fz + (head==='N'? -0.27 : 0.27), wide*0.82, 1.5, 0.1, CARVED);
   }
+  for(const s of [-1,1]){
+    if(horiz) box(g, hx + (head==='E'? 0.85 : -0.85), base+1.62, cz + s*wide/4, 1.7, 0.5, 2.2, LINEN);
+    else box(g, cx + s*wide/4, base+1.62, hz + (head==='N'? 0.85 : -0.85), 2.2, 0.5, 1.7, LINEN);
+  }
+  for(const s of [-1,1]){
+    let cu;
+    if(horiz) cu = box(g, hx + (head==='E'? 1.55 : -1.55), base+1.78, cz + s*wide/4, 0.42, 1.15, 1.5, M(throwCol));
+    else cu = box(g, cx + s*wide/4, base+1.78, hz + (head==='N'? 1.55 : -1.55), 1.5, 1.15, 0.42, M(throwCol));
+    if(horiz) cu.rotation.z = (head==='E'? -0.16 : 0.16); else cu.rotation.x = (head==='N'? 0.16 : -0.16);
+  }
+  if(horiz) box(g, fx + (head==='E'? -1.05 : 1.05), base+1.52, cz, 2.0, 0.18, sz*0.94, M(throwCol));
+  else box(g, cx, base+1.52, fz + (head==='N'? -1.05 : 1.05), sx*0.94, 0.18, 2.0, M(throwCol));
   shadowAt(g, cx, base, cz, Math.max(sx, sz) * 0.6);
 }
 function sofaAt(g, base, cx, cz, len, alongY, mat){
-  const dep = 3, h = 1.5;
-  if(alongY){ box(g,cx,base+h/2,cz,dep,h,len,mat); box(g,cx-0.2,base+1.9,cz,dep*0.45,2.3,len,mat); }
-  else { box(g,cx,base+h/2,cz,len,h,dep,mat); box(g,cx,base+1.9,cz-0.2,len,2.3,dep*0.45,mat); }
+  const dep = 3, vm = (mat === FAB2) ? VELVETS : VELVET;
+  const n = Math.max(2, Math.round(len / 2.4)), seg = len / n;
+  if(alongY){
+    box(g, cx, base+0.28, cz, dep, 0.55, len, WALNUT);
+    box(g, cx-1.18, base+1.85, cz, 0.55, 3.15, len, WALNUT);
+    box(g, cx-1.05, base+2.1, cz, 0.14, 2.2, len*0.86, CARVED);
+    for(const e of [-1,1]) box(g, cx+0.15, base+1.05, cz + e*(len/2-0.3), dep-0.5, 2.1, 0.6, WALNUT);
+    for(let i = 0; i < n; i++){ const zz = cz - len/2 + seg*(i+0.5);
+      box(g, cx+0.28, base+0.85, zz, dep-0.85, 0.6, seg-0.14, vm);
+      const bc = box(g, cx-0.72, base+1.95, zz, 0.5, 1.7, seg-0.14, vm); bc.rotation.z = 0.13;
+    }
+    for(const e of [-1,1]){ const tp = box(g, cx-0.55, base+1.8, cz + e*(len/2-1.05), 0.4, 1.25, 1.25, M(e < 0 ? 0xc9a877 : 0xa34a38)); tp.rotation.z = 0.13; tp.rotation.y = e*0.3; }
+  } else {
+    box(g, cx, base+0.28, cz, len, 0.55, dep, WALNUT);
+    box(g, cx, base+1.85, cz-1.18, len, 3.15, 0.55, WALNUT);
+    box(g, cx, base+2.1, cz-1.05, len*0.86, 2.2, 0.14, CARVED);
+    for(const e of [-1,1]) box(g, cx + e*(len/2-0.3), base+1.05, cz+0.15, 0.6, 2.1, dep-0.5, WALNUT);
+    for(let i = 0; i < n; i++){ const xx = cx - len/2 + seg*(i+0.5);
+      box(g, xx, base+0.85, cz+0.28, seg-0.14, 0.6, dep-0.85, vm);
+      const bc = box(g, xx, base+1.95, cz-0.72, seg-0.14, 1.7, 0.5, vm); bc.rotation.x = -0.13;
+    }
+    for(const e of [-1,1]){ const tp = box(g, cx + e*(len/2-1.05), base+1.8, cz-0.55, 1.25, 1.25, 0.4, M(e < 0 ? 0xc9a877 : 0xa34a38)); tp.rotation.x = -0.13; tp.rotation.y = e*0.3; }
+  }
   shadowAt(g, cx, base, cz, Math.max(len, dep) * 0.55);
 }
-function chairAt(g, base, cx, cz){ box(g,cx,base+0.75,cz,2.2,1.5,2.2,FAB2); box(g,cx,base+1.9,cz-0.85,2.2,2.2,0.4,FAB2); }
-function tableAt(g, base, cx, cz, sx, sz){ box(g,cx,base+1.45,cz,sx,0.25,sz,WOOD); box(g,cx,base+0.7,cz,sx*0.7,1.4,sz*0.7,WOOD2); shadowAt(g, cx, base, cz, Math.max(sx, sz) * 0.58); }
+function chairAt(g, base, cx, cz){
+  box(g, cx, base+0.32, cz, 2.2, 0.65, 2.2, WALNUT);
+  box(g, cx, base+0.92, cz+0.1, 1.95, 0.5, 1.95, VELVETS);
+  box(g, cx, base+2.0, cz-0.92, 2.1, 2.7, 0.3, WALNUT);
+  box(g, cx, base+2.15, cz-1.09, 1.7, 1.9, 0.1, CARVED);
+}
+function tableAt(g, base, cx, cz, sx, sz){
+  box(g, cx, base+1.5, cz, sx, 0.22, sz, WALNUT);
+  for(const ex of [-1,1]) for(const ez of [-1,1]) box(g, cx + ex*(sx/2-0.35), base+0.7, cz + ez*(sz/2-0.35), 0.3, 1.4, 0.3, WALNUT);
+  shadowAt(g, cx, base, cz, Math.max(sx, sz) * 0.58);
+}
 function rugAt(g, base, cx, cz, sx, sz, col){
-  box(g, cx, base+0.09, cz, sx, 0.07, sz, M(col));
-  box(g, cx, base+0.11, cz, sx*0.82, 0.05, sz*0.78, M(0xe8ddc4));
+  box(g, cx, base+0.09, cz, sx, 0.07, sz, rugMaterial(col));
 }
 function plantAt(g, base, x, z, s){
   const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.55*(s||1), 0.42*(s||1), 1.1, 9), M(0xa0522d));
@@ -368,6 +475,7 @@ function plantAt(g, base, x, z, s){
   fol.position.set(x, base+1.9*(s||1), z); g.add(fol);
 }
 const BEDPAL = [0x7d9dbd, 0xa8bfa8, 0xc9a2a2, 0x9db8a4, 0xb8a6c9, 0x8fb0b5];
+const THROWPAL = [0x116149, 0xa34a38, 0xc9a877, 0x7a4a63, 0x51608a, 0x5d8a4c];
 function furnish(g, fk, half, r, base){
   const R = rectW(half, r); const tp = r[6]; const lab = r[4];
   const cx = (R.x0+R.x1)/2, cz = (R.z0+R.z1)/2; const midLy = (r[2]+r[3])/2;
@@ -388,7 +496,7 @@ function furnish(g, fk, half, r, base){
     else if(lab==='BEDROOM NG1'){ bedAt(g, base, R.x1 - 3.25, cz, 'W'); }
     else bedAt(g, base, R.x0 + 3.25, Zw(half, (r[2]+r[3])/2 + 1.5), 'E');
     const W2 = stripW(R, 'C', lab==='BEDROOM NG1'? 0.0:0.55, lab==='BEDROOM NG1'? 0.5:0.99, 2);
-    box(g, (W2.x0+W2.x1)/2, base+2.2, (W2.z0+W2.z1)/2, W2.x1-W2.x0, 4.4, W2.z1-W2.z0, WOOD);
+    box(g, (W2.x0+W2.x1)/2, base+2.2, (W2.z0+W2.z1)/2, W2.x1-W2.x0, 4.4, W2.z1-W2.z0, WALNUT);
     rugAt(g, base, cx, cz + (half==='N'? 2.2 : -2.2), 7.5, 4.6, BEDPAL[(lab.length + (fk==='first'?2:0)) % BEDPAL.length]);
     const lampAt = (lx, lz) => { const grp = new THREE.Group(); box(grp, lx, base+0.8, lz, 1.3, 1.6, 1.3, WOOD2); const sh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.52, 0.72, 8), BRONZE); sh.position.set(lx, base+2.2, lz); grp.add(sh); const bb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 6), BULB); bb.position.set(lx, base+2.0, lz); grp.add(bb); g.add(grp); reg(grp, 'task'); glowAt(g, lx, base+2.15, lz, 2.3, 'task'); };
     if(lab==='BEDROOM NG1'){ lampAt(R.x1-1.15, cz-3.7); lampAt(R.x1-1.15, cz+3.7); }
@@ -441,11 +549,11 @@ function furnish(g, fk, half, r, base){
     const dirz = Math.sign(cz - ccz) || 1, wallz = ccz - dirz*cdep/2, frontz = ccz + dirz*cdep/2;
     const isGN = (fk==='ground' && half==='N');
     const gran = fk==='basement' ? 0x77736E : (half==='S' ? 0x625E59 : 0xB2ADA5);
-    box(g, ccx, base+1.45, ccz, clen, 2.9, cdep, M(0xcfc8b8));
+    box(g, ccx, base+1.45, ccz, clen, 2.9, cdep, WOOD2);
     box(g, ccx, base+3.0, ccz, clen, 0.22, cdep + 0.06, M(gran));
     const fx0 = C.x0 + 3.0, pw = (C.x1 - 0.2 - fx0) / Math.max(2, Math.floor((C.x1 - 0.2 - fx0)/2.2));
     for(let px = fx0 + pw/2; px < C.x1 - 0.3; px += pw){
-      box(g, px, base+1.45, frontz + dirz*0.05, pw - 0.14, 2.55, 0.08, M(0xe6ddcb));
+      box(g, px, base+1.45, frontz + dirz*0.05, pw - 0.14, 2.55, 0.08, WOOD);
       box(g, px, base+2.55, frontz + dirz*0.15, 0.9, 0.09, 0.09, STEEL);
     }
     const hxC = ccx - clen*0.2;

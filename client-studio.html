@@ -452,6 +452,71 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const SOILM = M(0x4a3826, { transparent: true });
   const MAT = { conc: M(0x9a968c), brick: M(0x9e5a38), plaster: M(0xe9e2d2), wood: M(0x8a6844), wood2: M(0x6e4f30), fab: M(0x7a9bb5), fab2: M(0xb56a5a), white: M(0xf2efe8), glass: M(0x86b7cc, { transparent: true, opacity: .55 }), soil: M(0x4a3826), green: M(0x5d8a4d), dark: M(0x2e2a26) };
   const TINT = { living: 0xd9c6a5, lounge: 0xd9c6a5, drawing: 0xd3bf9d, bed: 0xc4cfdd, bath: 0x9fc4bd, kitchen: 0xd8d2c4, hall: 0xcfc4ae, circ: 0xcfc4ae, store: 0xb9ac93, study: 0xc9d2bd, court: 0x7fae62 };
+  // === Furnished register v2 (same library as the Explorer; owner references 1 Nov 2026) ===
+  function walnutTextureS(){
+    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+    v.fillStyle = '#8a5a33'; v.fillRect(0,0,256,256);
+    for(let i = 0; i < 70; i++){
+      const x = Math.random()*256, w = 0.6 + Math.random()*3.2, dark = Math.random() > 0.35;
+      v.strokeStyle = dark ? 'rgba(46,26,12,' + (0.08 + Math.random()*0.16) + ')' : 'rgba(214,164,110,' + (0.05 + Math.random()*0.1) + ')';
+      v.lineWidth = w; v.beginPath(); v.moveTo(x, -6);
+      v.bezierCurveTo(x + (Math.random()*12-6), 80, x + (Math.random()*12-6), 170, x + (Math.random()*10-5), 262); v.stroke();
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+  }
+  function carvedTextureS(){
+    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+    v.fillStyle = '#6e4525'; v.fillRect(0,0,256,256);
+    v.strokeStyle = 'rgba(38,20,8,0.55)'; v.lineWidth = 5; v.strokeRect(10,10,236,236);
+    v.strokeStyle = 'rgba(226,176,120,0.28)'; v.lineWidth = 2; v.strokeRect(17,17,222,222);
+    v.strokeStyle = 'rgba(38,20,8,0.5)'; v.lineWidth = 4;
+    for(const mp of [[64,64],[192,64],[64,192],[192,192],[128,128]]){
+      const mx = mp[0], my = mp[1];
+      v.beginPath(); v.arc(mx, my, 26, 0, Math.PI*2); v.stroke();
+      v.beginPath(); v.arc(mx, my, 13, 0, Math.PI*2); v.stroke();
+      for(let p = 0; p < 8; p++){ const a = p*Math.PI/4; v.beginPath(); v.moveTo(mx + Math.cos(a)*13, my + Math.sin(a)*13); v.quadraticCurveTo(mx + Math.cos(a)*24, my + Math.sin(a)*24, mx + Math.cos(a+0.6)*13, my + Math.sin(a+0.6)*13); v.stroke(); }
+      v.fillStyle = 'rgba(30,16,6,0.35)'; v.beginPath(); v.arc(mx, my, 4, 0, Math.PI*2); v.fill();
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+  }
+  function velvetTextureS(){
+    const c = document.createElement('canvas'); c.width = c.height = 128; const v = c.getContext('2d');
+    v.fillStyle = '#e8e8e8'; v.fillRect(0,0,128,128);
+    for(let i = 0; i < 2600; i++){ const g = 205 + Math.floor(Math.random()*50); v.fillStyle = 'rgba(' + g + ',' + g + ',' + g + ',0.5)'; v.fillRect(Math.random()*128, Math.random()*128, 1.6, 1.6); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3,3); return t;
+  }
+  function subwayTextureS(){
+    const c = document.createElement('canvas'); c.width = 256; c.height = 128; const v = c.getContext('2d');
+    v.fillStyle = '#cfd4d1'; v.fillRect(0,0,256,128);
+    v.fillStyle = '#f4f2ec';
+    const bh = 30, bw = 62;
+    for(let row = 0; row < 4; row++){ const off = (row % 2) * (bw / 2);
+      for(let cx2 = -1; cx2 < 5; cx2++){ v.fillRect(off + cx2 * (bw + 3) + 1.5, row * (bh + 3) + 1.5, bw, bh); } }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 1); return t;
+  }
+  const VELTEXS = velvetTextureS();
+  MAT.walnut = M(0xffffff, { map: walnutTextureS() });
+  MAT.carved = M(0xffffff, { map: carvedTextureS() });
+  MAT.velvet = M(0x116149, { map: VELTEXS });
+  MAT.velvets = M(0x67785f, { map: VELTEXS });
+  MAT.linen = M(0xf3ead6, { map: VELTEXS });
+  MAT.subway = M(0xffffff, { map: subwayTextureS() });
+  const _rugCacheS = {};
+  function rugMaterialS(col){
+    const key = col.toString(16);
+    if(_rugCacheS[key]) return _rugCacheS[key];
+    const c = document.createElement('canvas'); c.width = 256; c.height = 320; const v = c.getContext('2d');
+    v.fillStyle = '#' + col.toString(16).padStart(6, '0'); v.fillRect(0,0,256,320);
+    v.strokeStyle = 'rgba(232,221,196,0.9)'; v.lineWidth = 10; v.strokeRect(14,14,228,292);
+    v.strokeStyle = 'rgba(232,221,196,0.55)'; v.lineWidth = 3; v.strokeRect(30,30,196,260);
+    v.save(); v.translate(128,160); v.rotate(Math.PI/4);
+    v.strokeStyle = 'rgba(232,221,196,0.85)'; v.lineWidth = 5; v.strokeRect(-52,-52,104,104);
+    v.strokeStyle = 'rgba(232,221,196,0.5)'; v.lineWidth = 3; v.strokeRect(-34,-34,68,68); v.restore();
+    v.fillStyle = 'rgba(232,221,196,0.75)';
+    for(const mp of [[128,52],[128,268],[52,160],[204,160],[128,160]]){ v.beginPath(); v.arc(mp[0], mp[1], 5, 0, Math.PI*2); v.fill(); }
+    const m = M(0xffffff, { map: new THREE.CanvasTexture(c) });
+    _rugCacheS[key] = m; return m;
+  }
   function sizeRenderer(){ const w = app.clientWidth, h = app.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
   addEventListener('resize', sizeRenderer);
   // orbit (drag / wheel / pinch — same gesture family as the Explorer)
@@ -670,19 +735,27 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const hd = r.d / 2, hw = r.w / 2;
     if(r.type === 'bed'){
       const bz = hd - 0.3 - 3.1;
-      P(0, bz, 4.4, 1.1, 6.2, 0.7, MAT.wood, stFurn); P(0, bz, 4.2, 0.35, 5.9, 1.35, MAT.white, stFurn);
-      P(0, bz + 2.35, 3.6, 0.3, 1.4, 1.5, MAT.fab2, stFurn);
+      P(0, 0, r.w * 0.68, 0.07, r.d * 0.55, 0.05, rugMaterialS(0x7a4a63), stFurn);
+      P(0, bz, 4.4, 1.1, 6.2, 0.7, MAT.walnut, stFurn); P(0, bz, 4.2, 0.35, 5.9, 1.35, MAT.linen, stFurn);
+      P(0, bz + 2.95, 4.6, 3.6, 0.3, 2.4, MAT.walnut, stFurn); P(0, bz + 2.76, 4.0, 2.6, 0.12, 2.2, MAT.carved, stFurn);
+      P(0, bz + 2.35, 3.6, 0.3, 1.4, 1.5, MAT.velvet, stFurn);
+      P(0, bz - 2.2, 4.2, 0.16, 1.6, 1.62, MAT.fab2, stFurn);
       P(-3.1, bz + 2.5, 1.1, 1.5, 1.1, 0.75, MAT.wood2, stFurn); P(3.1, bz + 2.5, 1.1, 1.5, 1.1, 0.75, MAT.wood2, stFurn);
-      P(-(hw - 0.9), -(hd - 1), 1.6, 6.4, 0.8, 3.2, MAT.wood2, stFurn);
+      P(-(hw - 0.9), -(hd - 1), 1.6, 6.4, 0.8, 3.2, MAT.walnut, stFurn);
     } else if(['living', 'lounge', 'drawing'].includes(r.type)){
       const sz = hd - 0.3 - 1.1;
-      P(0, sz, 6.4, 1.6, 2.2, 0.8, MAT.fab, stFurn);
-      P(0, sz - 3.4, 3.4, 0.9, 1.8, 0.45, MAT.wood, stFurn);
-      P(-(hw - 1.4), 0, 2, 1.6, 2, 0.8, MAT.fab2, stFurn); P(hw - 1.4, 0, 2, 1.6, 2, 0.8, MAT.fab2, stFurn);
+      P(0, sz - 1.2, 7.4, 0.07, 5.2, 0.05, rugMaterialS(0xa34a38), stFurn);
+      P(0, sz, 6.6, 0.5, 2.4, 0.25, MAT.walnut, stFurn);
+      P(0, sz, 6.4, 1.6, 2.2, 0.8, MAT.velvet, stFurn);
+      P(0, sz + 1.06, 6.0, 1.1, 0.12, 2.15, MAT.carved, stFurn);
+      P(-2.2, sz, 1.1, 1.1, 0.35, 1.15, MAT.fab2, stFurn); P(2.2, sz, 1.1, 1.1, 0.35, 1.15, MAT.velvets, stFurn);
+      P(0, sz - 3.4, 3.4, 0.9, 1.8, 0.45, MAT.walnut, stFurn);
+      P(-(hw - 1.4), 0, 2, 1.6, 2, 0.8, MAT.velvets, stFurn); P(hw - 1.4, 0, 2, 1.6, 2, 0.8, MAT.velvets, stFurn);
       P(0, -(hd - 0.2), 4.6, 2.6, 0.25, 3.4, MAT.dark, stFurn);
     } else if(r.type === 'kitchen'){
       P(0, hd - 0.9, r.w - 1, 3, 1.8, 1.5, MAT.wood2, stFit);
-      P(0, hd - 0.7, r.w - 1, 2.2, 1.2, 4.6, MAT.wood, stFit);
+      P(0, hd - 0.04, r.w - 1, 1.5, 0.08, 3.7, MAT.subway, stFit);
+      P(0, hd - 0.7, r.w - 1, 2.2, 1.2, 4.6, MAT.walnut, stFit);
       P(-(hw - 0.9), 0, 1.8, 3, Math.max(2, r.d - 2), 1.5, MAT.wood2, stFit);
     } else if(r.type === 'bath'){
       P(-(hw - 1.2), hd - 1.1, 1.5, 1.6, 2.2, 0.8, MAT.white, stFit);
@@ -691,8 +764,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       for(let i = 0; i < 3; i++) P(0, hd - 0.8, r.w - 1.4, 0.25, 1.4, 1 + i * 1.6, MAT.wood, stFurn);
       for(let i = 0; i < 3; i++) P(-(hw - 0.7), 0, 1.4, 0.25, Math.max(2, r.d - 2), 1 + i * 1.6, MAT.wood, stFurn);
     } else if(r.type === 'study'){
-      P(0, hd - 1.2, 4.6, 0.3, 2, 1.4, MAT.wood, stFurn);
-      P(0, hd - 3.1, 1.6, 1.4, 1.6, 0.7, MAT.fab, stFurn);
+      P(0, hd - 1.2, 4.6, 0.3, 2, 1.4, MAT.walnut, stFurn);
+      P(0, hd - 3.1, 1.6, 1.4, 1.6, 0.7, MAT.velvet, stFurn);
     }
   }
   // ---------- stages / floor / mode ----------
