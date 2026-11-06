@@ -839,6 +839,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     // numbered side list built by buildRoomList() below — never as tags
     // hovering over the house. labelDivs stays empty on purpose.
     refreshFinRooms();
+    refreshSwapRooms();
     $('flBase').style.display = hasB ? '' : 'none';
     if(!hasB && state.floor === 'basement'){ state.floor = 'ground'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'ground')); }
     applyStage(STAGES.length);
@@ -933,7 +934,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const FLOOR_FIN_NAMES = { std: 'معیاری', marble: 'سنگِ مرمر', tile: 'ٹائل', wood: 'لکڑی', carpet: 'قالین' };
   const FLOOR_FIN = { marble: () => MAT.marble, tile: () => MAT.subway, wood: () => MAT.walnut, carpet: () => rugMaterialS(0x74353a) };
   const FIN = {};
-  const roomKey = r => r.fk + '|' + r.type + '|' + Math.round(r.x) + '|' + Math.round(r.z);
+  const roomKey = r => r.fk + '|' + Math.round(r.x) + '|' + Math.round(r.z);
   let finSelIdx = -1;
   function refreshFinChips(){
     document.querySelectorAll('[data-fin]').forEach(b => {
@@ -962,6 +963,66 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     if(r._plate) r._plate.material = key === 'std' ? r._plate.userData.defMat : FLOOR_FIN[key]();
     refreshFinChips(); refreshFinList();
     if(curSpec && PLAN) summary(curSpec);
+  }
+  // ---------- editor-lite (Demo step 7): swap two rooms' functions, guarded ----------
+  // Wet rooms and circulation are pinned by plumbing and passage; only dry
+  // habitable/store functions may trade places. Every swap is judged by the
+  // executable QA gate BEFORE it is shown; a failure reverts with the reason.
+  const SWAP_LOCKED = { bath: 'باتھ پلمبنگ و اسٹیک سے بندھا ہے', kitchen: 'کچن پلمبنگ و وینٹ سے بندھا ہے', hall: 'سیڑھی ہال راستے کا مرکز ہے', circ: 'گیلری آمدورفت کا راستہ ہے', court: 'صحن روشنی و ہوا کا ذریعہ ہے' };
+  const SWAP_TYPES = ['bed', 'study', 'store', 'drawing', 'living', 'lounge'];
+  const SWAP_LABEL = { bed: 'بیڈ روم', study: 'مطالعہ', store: 'اسٹور', drawing: 'ڈرائنگ روم', living: 'لیونگ روم', lounge: 'لاؤنج' };
+  function renumberSwapLabels(fk){
+    const rs = PLAN.rooms.filter(r => r.fk === fk && SWAP_TYPES.includes(r.type)).sort((a, b) => (a.z - b.z) || (a.x - b.x));
+    const counts = {};
+    for(const r of rs){ counts[r.type] = (counts[r.type] || 0) + 1; }
+    const seen = {};
+    for(const r of rs){ seen[r.type] = (seen[r.type] || 0) + 1; r.label = SWAP_LABEL[r.type] + (counts[r.type] > 1 ? ' ' + seen[r.type] : ''); }
+  }
+  function refreshSwapRooms(){
+    for(const id of ['swapA', 'swapB']){
+      const sel = $(id); if(!sel || !PLAN) continue;
+      sel.innerHTML = PLAN.rooms.map((r, i) => '<option value="' + i + '">' + r.label + ' — ' + ({ basement: 'تہہ خانہ', ground: 'گراؤنڈ فلور', first: 'پہلی منزل' })[r.fk] + ' · ' + Math.round(r.w) + '×' + Math.round(r.d) + ' فٹ</option>').join('');
+    }
+    const a = $('swapA'), b = $('swapB');
+    if(a && b && PLAN){ a.value = '0'; const j = PLAN.rooms.findIndex((r, i) => i > 0 && r.fk === PLAN.rooms[0].fk && SWAP_TYPES.includes(r.type)); b.value = String(j > 0 ? j : Math.min(1, PLAN.rooms.length - 1)); }
+  }
+  function validateSwap(a, b){
+    if(!a || !b || a === b) return 'دو الگ کمرے چنیں';
+    if(a.fk !== b.fk) return 'دونوں کمرے ایک ہی منزل کے ہوں — منزل بدل کر کام نہیں بدلا جا سکتا';
+    if(SWAP_LOCKED[a.type]) return '«' + a.label + '» نہیں بدل سکتا — ' + SWAP_LOCKED[a.type];
+    if(SWAP_LOCKED[b.type]) return '«' + b.label + '» نہیں بدل سکتا — ' + SWAP_LOCKED[b.type];
+    if(a.type === b.type) return 'دونوں کمروں کا کام ایک جیسا ہے — تبدیلی بے معنی ہے';
+    const hab = t => ['bed', 'study', 'drawing', 'living', 'lounge'].includes(t);
+    if(hab(b.type) && (a.w < 7 || a.d < 7)) return '«' + a.label + '» ' + SWAP_LABEL[b.type] + ' کے لیے بہت چھوٹا ہے (کم از کم 7×7 فٹ)';
+    if(hab(a.type) && (b.w < 7 || b.d < 7)) return '«' + b.label + '» ' + SWAP_LABEL[a.type] + ' کے لیے بہت چھوٹا ہے (کم از کم 7×7 فٹ)';
+    return null;
+  }
+  function doSwap(){
+    const msg = $('swapMsg');
+    const a = PLAN.rooms[parseInt($('swapA').value, 10)], b = PLAN.rooms[parseInt($('swapB').value, 10)];
+    const why = validateSwap(a, b);
+    if(why){ if(msg) msg.innerHTML = '<span style="color:#f0a35e">⛔ تبدیلی روک دی گئی: ' + why + '</span>'; toast('⛔ ' + why); return; }
+    const ta = a.type, tb = b.type, la = a.label, lb = b.label;
+    a.type = tb; b.type = ta;
+    renumberSwapLabels(a.fk);
+    const fails = qaCheck(PLAN).filter(q => q.s === 'FAIL');
+    if(fails.length){
+      a.type = ta; b.type = tb; a.label = la; b.label = lb;
+      const reason = 'ویلیڈیٹر نے روک دیا: ' + fails[0].t + ' — ' + fails[0].d;
+      if(msg) msg.innerHTML = '<span style="color:#f0a35e">⛔ ' + reason + '</span>';
+      toast('⛔ ' + reason);
+      return;
+    }
+    PLAN.meta.warnings.push('ایڈیٹر لائٹ تبدیلی: «' + la + '» ↔ «' + lb + '» — ویلیڈیٹر پاس ✓');
+    buildHouse(curSpec, PLAN);
+    if(!PLAN.meta.fromPlan && curSpec){
+      lastAutoSpec = curSpec;
+      const vb = $('variantBar');
+      if(vb){ vb.style.display = 'flex'; vb.querySelectorAll('button').forEach(x => { const on = x.dataset.v === (curSpec.variant || 'A'); x.style.background = on ? '#3DAB94' : '#12305e'; x.style.color = on ? '#0A1A3B' : '#EAF3EF'; }); }
+    }
+    refreshSwapRooms();
+    if(msg) msg.innerHTML = '<span style="color:#8fd8c8">✓ تبدیلی ہو گئی: «' + la + '» اب ' + SWAP_LABEL[tb] + ' ہے اور «' + lb + '» اب ' + SWAP_LABEL[ta] + ' — ویلیڈیٹر پاس</span>';
+    toast('✓ تبدیلی ہو گئی — ویلیڈیٹر پاس');
   }
   // ---------- stages / floor / mode ----------
   const _wv = new THREE.Vector3();
@@ -1018,6 +1079,12 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 6px">'
     + Object.keys(FLOOR_FIN_NAMES).map(k => '<button data-fin="' + k + '" style="border:1px solid #2b4d82;border-radius:999px;padding:6px 12px;font-family:inherit;font-size:13px;cursor:pointer;background:#12305e;color:#EAF3EF">' + FLOOR_FIN_NAMES[k] + '</button>').join('') + '</div>'
     + '<div id="finList" style="font-size:12.5px;color:#BFE3D8;line-height:1.8"></div>');
+  drawer.insertAdjacentHTML('beforeend', '<h4>✏️ نقشے میں تبدیلی — ایڈیٹر لائٹ (ڈیمو)</h4>'
+    + '<div style="font-size:13px;color:#9db8d6;line-height:1.9">دو کمروں کے کام آپس میں بدلیں — مثلاً بیڈ روم ↔ مطالعہ۔ باتھ، کچن، سیڑھی ہال، گیلری و صحن نہیں بدلتے: پلمبنگ و راستہ وہیں رہتا ہے۔ ہر تبدیلی پہلے خودکار ویلیڈیٹر سے گزرتی ہے؛ اصول ٹوٹے تو وجہ بتا کر روک دی جاتی ہے۔ (آپشن A/B/C بدلنے سے تبدیلی ختم ہو جائے گی۔)</div>'
+    + '<select id="swapA" style="width:100%;margin:6px 0 4px;padding:9px;border-radius:10px;background:#0d2247;color:#EAF3EF;border:1px solid #2b4d82;font-family:inherit;font-size:14px"></select>'
+    + '<select id="swapB" style="width:100%;margin:0 0 6px;padding:9px;border-radius:10px;background:#0d2247;color:#EAF3EF;border:1px solid #2b4d82;font-family:inherit;font-size:14px"></select>'
+    + '<button id="swapGo" style="width:100%">⇄ کام بدلیں</button>'
+    + '<div id="swapMsg" style="font-size:13px;line-height:1.9;margin-top:6px"></div>');
   drawer.insertAdjacentHTML('beforeend', '<h4>📸 تصویر</h4><button id="mShot">📸 اسکرین شاٹ — تصویر محفوظ کریں</button>');
   drawer.querySelector('#mShot').onclick = () => {
     try {
@@ -1080,6 +1147,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   drawer.querySelectorAll('[data-paint]').forEach(b => b.onclick = () => { MAT.plaster.color.set(b.dataset.paint); toast('دیواروں کا رنگ بدل گیا'); });
   drawer.querySelector('#finRoom').addEventListener('change', e => { finSelIdx = parseInt(e.target.value, 10); refreshFinChips(); });
   drawer.querySelectorAll('[data-fin]').forEach(b => b.onclick = () => { if(!PLAN || finSelIdx < 0) return; const r = PLAN.rooms[finSelIdx]; applyFin(r, b.dataset.fin); toast(r.label + ' — فرش: ' + FLOOR_FIN_NAMES[b.dataset.fin]); });
+  drawer.querySelector('#swapGo').onclick = () => { if(!PLAN){ toast('پہلے نقشہ بنائیں'); return; } doSwap(); };
   // delegated menu buttons (bound after innerHTML)
   $('sumPanel').addEventListener('click', e => { const b = e.target.closest('[data-grade]'); if(!b) return; GRADE = b.dataset.grade; if(curSpec && PLAN) summary(curSpec); toast('تعمیر کا درجہ: ' + GRADES[GRADE].name + ' (ڈیمو)'); });
   drawer.querySelector('#mStages').onclick = () => stageMode(true);
