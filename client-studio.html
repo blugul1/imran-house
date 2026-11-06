@@ -480,7 +480,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const dl = new THREE.DirectionalLight(0xffffff, 0.95); dl.position.set(-70, 110, -50); scene.add(dl);
   const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .92 }, o || {}));
   const SOILM = M(0x4a3826, { transparent: true });
-  const MAT = { conc: M(0x9a968c), brick: M(0x9e5a38), plaster: M(0xe9e2d2), wood: M(0x8a6844), wood2: M(0x6e4f30), fab: M(0x7a9bb5), fab2: M(0xb56a5a), white: M(0xf2efe8), glass: M(0x86b7cc, { transparent: true, opacity: .55 }), soil: M(0x4a3826), green: M(0x5d8a4d), dark: M(0x2e2a26) };
+  const MAT = { conc: M(0x9a968c), brick: M(0x9e5a38), plaster: M(0xe9e2d2), wood: M(0x8a6844), wood2: M(0x6e4f30), fab: M(0x7a9bb5), fab2: M(0xb56a5a), white: M(0xf2efe8), glass: M(0x86b7cc, { transparent: true, opacity: .55 }), soil: M(0x4a3826), green: M(0x5d8a4d), dark: M(0x2e2a26), elevDark: M(0x2e3138), elevCream: M(0xf3e5c3) };
   const TINT = { living: 0xd9c6a5, lounge: 0xd9c6a5, drawing: 0xd3bf9d, bed: 0xc4cfdd, bath: 0x9fc4bd, kitchen: 0xd8d2c4, hall: 0xcfc4ae, circ: 0xcfc4ae, store: 0xb9ac93, study: 0xc9d2bd, court: 0x7fae62 };
   // === Furnished register v2 (same library as the Explorer; owner references 1 Nov 2026) ===
   function walnutTextureS(){
@@ -575,6 +575,11 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   // ---------- build the house ----------
   const VARIANT_NAMES = { A: 'معیاری', B: 'بڑے کمرے', C: 'بڑا صحن' };
   let lastAutoSpec = null;
+  // ---------- elevation styles (Client Premium CP-1: skin only, structure untouched) ----------
+  const ELEV_NAMES = { modern: 'جدید', classic: 'کلاسیکی', kashmiri: 'کشمیری طرز' };
+  const ELEV_PLASTER = { modern: 0xedf0f2, classic: 0xe7d3ab, kashmiri: 0xe3c298 };
+  const ELEV_GLASS = { modern: 0x47617a, classic: 0x7d8fa3, kashmiri: 0x5f7d8c };
+  let ELEV = 'modern', elevGroups = null, curSpec = null;
   function buildHouse(spec, overridePlan){
     const plan = overridePlan || generatePlan(spec);
     // plan OPTIONS bar (auto mode only — intake plans are the client's own)
@@ -591,6 +596,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         });
       }
     }
+    curSpec = spec;
+    const eb = $('elevBar');
+    if(eb) eb.style.display = 'flex';
     // bedroom count honour (auto mode only — a confirmed plan is never relabelled)
     let beds = plan.rooms.filter(r => r.type === 'bed');
     if(!overridePlan && spec.needs.bedrooms < beds.length){
@@ -721,6 +729,37 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const ry = (two ? 2 * FH : FH) + 0.6;
     B(HOUSE, MX((x0 + x1) / 2), ry + 1.1, MZ(z0), W, 2.2, 0.5, MAT.plaster, stRoof); B(HOUSE, MX((x0 + x1) / 2), ry + 1.1, MZ(z1), W, 2.2, 0.5, MAT.plaster, stRoof);
     B(HOUSE, MX(x0), ry + 1.1, MZ((z0 + z1) / 2), 0.5, 2.2, D, MAT.plaster, stRoof); B(HOUSE, MX(x1), ry + 1.1, MZ((z0 + z1) / 2), 0.5, 2.2, D, MAT.plaster, stRoof);
+    // elevation style trims — additive skin elements on the envelope; appear at the plaster stage
+    {
+      elevGroups = { modern: new THREE.Group(), classic: new THREE.Group(), kashmiri: new THREE.Group() };
+      const topFH = two ? 2 * FH : FH;
+      const zz0 = MZ(z0), zz1 = MZ(z1), xx0 = MX(x0), xx1 = MX(x1), ccx = (xx0 + xx1) / 2, ccz = (zz0 + zz1) / 2;
+      const wallBand = (g, y, h, t, mat) => {
+        B(g, ccx, y, zz0 - t / 2 + 0.12, W + 2 * t, h, t, mat, stPlaster);
+        B(g, ccx, y, zz1 + t / 2 - 0.12, W + 2 * t, h, t, mat, stPlaster);
+        B(g, xx0 - t / 2 + 0.12, y, ccz, t, h, D, mat, stPlaster);
+        B(g, xx1 + t / 2 - 0.12, y, ccz, t, h, D, mat, stPlaster);
+      };
+      const capBand = (g, y, h, w2, mat) => {
+        B(g, ccx, y, zz0, W + w2, h, w2, mat, stPlaster);
+        B(g, ccx, y, zz1, W + w2, h, w2, mat, stPlaster);
+        B(g, xx0, y, ccz, w2, h, D + w2, mat, stPlaster);
+        B(g, xx1, y, ccz, w2, h, D + w2, mat, stPlaster);
+      };
+      for(const ft of (two ? [FH, 2 * FH] : [FH])){
+        wallBand(elevGroups.modern, ft - 0.28, 0.55, 0.3, MAT.elevDark);
+        wallBand(elevGroups.classic, ft - 0.4, 0.8, 0.5, MAT.elevCream);
+        wallBand(elevGroups.kashmiri, ft - 0.3, 0.6, 0.35, MAT.walnut);
+        for(const cx of [x0, x1]) for(const cz of [z0, z1]) B(elevGroups.classic, MX(cx), ft - FH / 2, MZ(cz), 1.25, FH, 1.25, MAT.elevCream, stPlaster);
+      }
+      capBand(elevGroups.modern, ry + 2.04, 0.32, 0.85, MAT.elevDark);
+      capBand(elevGroups.classic, ry + 1.75, 0.3, 0.9, MAT.elevCream);
+      capBand(elevGroups.classic, ry + 2.05, 0.3, 0.95, MAT.elevCream);
+      wallBand(elevGroups.kashmiri, ry - 0.45, 0.95, 0.3, MAT.carved);
+      capBand(elevGroups.kashmiri, ry + 2.04, 0.32, 0.85, MAT.walnut);
+      for(const k in elevGroups) HOUSE.add(elevGroups[k]);
+      applyElev();
+    }
     // porch + car
     if(spec.needs.carPorch){
       const hx = plan.rooms.find(r => r.fk === 'ground' && r.type === 'hall') || plan.rooms.find(r => r.type === 'hall') || plan.rooms.find(r => r.fk === 'ground');
@@ -815,6 +854,18 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       P(0, hd - 1.2, 4.6, 0.3, 2, 1.4, MAT.walnut, stFurn);
       P(0, hd - 3.1, 1.6, 1.4, 1.6, 0.7, MAT.velvet, stFurn);
     }
+  }
+  // ---------- elevation style switching (skin only; plan, QA and stages untouched) ----------
+  function applyElev(){
+    MAT.plaster.color.setHex(ELEV_PLASTER[ELEV]);
+    MAT.glass.color.setHex(ELEV_GLASS[ELEV]);
+    if(elevGroups) for(const k in elevGroups) elevGroups[k].visible = (k === ELEV);
+    document.querySelectorAll('[data-elev]').forEach(b => {
+      const on = b.dataset.elev === ELEV;
+      b.style.background = on ? '#3DAB94' : '#12305e';
+      b.style.color = on ? '#0A1A3B' : '#EAF3EF';
+    });
+    if(curSpec && PLAN) summary(curSpec);
   }
   // ---------- stages / floor / mode ----------
   const _wv = new THREE.Vector3();
@@ -913,6 +964,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     $('sumPanel').innerHTML = '<b style="font-size:17px">📋 خلاصہ</b>' + (spec.name ? ' — ' + spec.name : '') + (spec.loc ? ' · ' + spec.loc : '')
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
+      + '<br>باہر کی لک (ایلیویشن): <b>' + ELEV_NAMES[ELEV] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر «باہر کی لک» بٹنوں سے اسٹائل بدل کر فرق دیکھیں — نقشہ و پیمائش وہی رہتی ہے)</span>'
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
       + '<br>پروگرام: بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen') + ' · لیونگ/لاؤنج ' + (cnt('living') + cnt('lounge')) + ' · اسٹور ' + cnt('store')
       + '<br>اہلِ خانہ: ' + m.familyTotal + ' افراد'
@@ -1011,6 +1063,25 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       b.textContent = v + ' — ' + VARIANT_NAMES[v];
       b.style.cssText = 'border:1px solid #2b4d82;border-radius:999px;padding:6px 13px;font-family:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap;background:#12305e;color:#EAF3EF';
       b.onclick = () => { if(lastAutoSpec){ lastAutoSpec.variant = v; buildHouse(lastAutoSpec); } };
+      bar.appendChild(b);
+    }
+    document.body.appendChild(bar);
+  })();
+  // ---------- elevation styles bar (باہر کی لک: جدید · کلاسیکی · کشمیری طرز) ----------
+  (function elevBarInit(){
+    const bar = document.createElement('div');
+    bar.id = 'elevBar';
+    bar.style.cssText = 'position:fixed;top:112px;left:50%;transform:translateX(-50%);z-index:84;display:none;gap:6px;align-items:center;background:rgba(10,22,44,.92);border:1px solid #2b4d82;border-radius:999px;padding:5px 8px;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+    const cap = document.createElement('span');
+    cap.textContent = 'باہر کی لک:';
+    cap.style.cssText = 'color:#9db8d6;font-size:13px;padding:0 4px;white-space:nowrap';
+    bar.appendChild(cap);
+    for(const v of ['modern', 'classic', 'kashmiri']){
+      const b = document.createElement('button');
+      b.dataset.elev = v;
+      b.textContent = ELEV_NAMES[v];
+      b.style.cssText = 'border:1px solid #2b4d82;border-radius:999px;padding:6px 13px;font-family:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap;background:#12305e;color:#EAF3EF';
+      b.onclick = () => { ELEV = v; applyElev(); toast('باہر کی لک: ' + ELEV_NAMES[v]); };
       bar.appendChild(b);
     }
     document.body.appendChild(bar);
