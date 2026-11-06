@@ -298,6 +298,25 @@ const CARVED = new THREE.MeshLambertMaterial({map: carvedTexture()});
 const VELVET = new THREE.MeshLambertMaterial({color: 0x116149, map: VELTEX});
 const VELVETS = new THREE.MeshLambertMaterial({color: 0x67785f, map: VELTEX});
 const LINEN = new THREE.MeshLambertMaterial({color: 0xf3ead6, map: VELTEX});
+function subwayTexture(){
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#878b81'; c.fillRect(0, 0, 512, 256);
+  const tw = 512 / 4, th = 256 / 8;
+  for(let row = 0; row < 8; row++){
+    const off = (row % 2) * tw / 2;
+    for(let col = -1; col < 5; col++){
+      const x = col * tw + off, y = row * th;
+      const grd = c.createLinearGradient(x, y, x, y + th);
+      grd.addColorStop(0, '#f2efe6'); grd.addColorStop(1, '#d9d4c6');
+      c.fillStyle = grd; c.fillRect(x + 3, y + 3, tw - 6, th - 6);
+    }
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 1);
+  return t;
+}
+const SUBWAY = new THREE.MeshLambertMaterial({map: subwayTexture()});
 const _rugCache = {};
 function rugMaterial(col){
   const key = col.toString(16);
@@ -551,6 +570,7 @@ function furnish(g, fk, half, r, base){
     const gran = fk==='basement' ? 0x77736E : (half==='S' ? 0x625E59 : 0xB2ADA5);
     box(g, ccx, base+1.45, ccz, clen, 2.9, cdep, WOOD2);
     box(g, ccx, base+3.0, ccz, clen, 0.22, cdep + 0.06, M(gran));
+    box(g, ccx, base+3.88, wallz + dirz*0.335, clen, 1.66, 0.07, SUBWAY);
     const fx0 = C.x0 + 3.0, pw = (C.x1 - 0.2 - fx0) / Math.max(2, Math.floor((C.x1 - 0.2 - fx0)/2.2));
     for(let px = fx0 + pw/2; px < C.x1 - 0.3; px += pw){
       box(g, px, base+1.45, frontz + dirz*0.05, pw - 0.14, 2.55, 0.08, WOOD);
@@ -2377,24 +2397,54 @@ const PLACE = { active:false, kind:null, ghost:null, room:null, rot:0, placed:[]
 const GHOSTM = MT(0x3dab94, 0.5);
 function furnBuild(kind, ghost){
   const g = new THREE.Group();
-  const M1 = ghost ? GHOSTM : M(0x8a6844), M2 = ghost ? GHOSTM : M(0x5d7a68), M3 = ghost ? GHOSTM : M(0xf0ead9);
+  if(ghost){
+    if(kind === 'bed'){
+      box(g, 0, 0.7, 0, 5.0, 1.4, 6.5, GHOSTM);
+      box(g, 0, 1.9, -3.15, 5.0, 3.8, 0.35, GHOSTM);
+    } else if(kind === 'sofa'){
+      box(g, 0, 0.85, 0, 5.5, 1.7, 2.6, GHOSTM);
+      box(g, 0, 2.2, -1.0, 5.5, 2.6, 0.65, GHOSTM);
+      box(g, -2.55, 1.5, 0, 0.7, 3.0, 2.6, GHOSTM);
+      box(g, 2.55, 1.5, 0, 0.7, 3.0, 2.6, GHOSTM);
+    } else if(kind === 'table'){
+      box(g, 0, 2.35, 0, 3.6, 0.28, 2.4, GHOSTM);
+      for(const lx of [-1.55, 1.55]) for(const lz of [-0.95, 0.95]) box(g, lx, 1.1, lz, 0.28, 2.2, 0.28, GHOSTM);
+    } else if(kind === 'wardrobe'){
+      box(g, 0, 3.5, 0, 4.0, 7.0, 1.8, GHOSTM);
+    }
+    return g;
+  }
+  // Solid items carry the same v2 register as the built-in furniture:
+  // carved walnut, emerald velvet, linen — same footprints, richer build.
   if(kind === 'bed'){
-    box(g, 0, 0.7, 0, 5.0, 1.4, 6.5, M1);
-    box(g, 0, 1.9, -3.15, 5.0, 3.8, 0.35, M1);
-    box(g, 0, 1.55, -2.2, 4.4, 0.5, 1.6, M3);
-    box(g, 0, 1.5, 0.9, 4.7, 0.35, 4.4, M2);
+    const throwCol = THROWPAL[BEDCTR++ % THROWPAL.length];
+    box(g, 0, 0.55, 0, 5.0, 1.1, 6.5, WALNUT);
+    box(g, 0, 1.27, 0.15, 4.7, 0.35, 6.1, LINEN);
+    box(g, 0, 2.1, -3.05, 5.0, 4.2, 0.5, WALNUT);
+    box(g, 0, 2.35, -3.36, 4.1, 3.1, 0.1, CARVED);
+    box(g, 0, 1.15, 3.05, 5.0, 2.3, 0.42, WALNUT);
+    box(g, 0, 1.3, 3.29, 4.1, 1.5, 0.1, CARVED);
+    for(const s of [-1, 1]) box(g, s * 1.25, 1.62, -2.2, 2.2, 0.5, 1.7, LINEN);
+    for(const s of [-1, 1]){ const cu = box(g, s * 1.25, 1.78, -1.5, 1.5, 1.15, 0.42, M(throwCol)); cu.rotation.x = -0.16; }
+    box(g, 0, 1.52, 2.0, 4.7, 0.18, 2.0, M(throwCol));
   } else if(kind === 'sofa'){
-    box(g, 0, 0.85, 0, 5.5, 1.7, 2.6, M2);
-    box(g, 0, 2.2, -1.0, 5.5, 2.6, 0.65, M2);
-    box(g, -2.55, 1.5, 0, 0.7, 3.0, 2.6, M2);
-    box(g, 2.55, 1.5, 0, 0.7, 3.0, 2.6, M2);
+    box(g, 0, 0.28, 0, 5.5, 0.55, 2.6, WALNUT);
+    box(g, 0, 1.85, -1.02, 5.5, 3.15, 0.55, WALNUT);
+    box(g, 0, 2.1, -0.72, 4.7, 2.2, 0.14, CARVED);
+    for(const e of [-1, 1]) box(g, e * 2.45, 1.05, 0.15, 0.6, 2.1, 2.1, WALNUT);
+    for(const e of [-1, 1]){
+      box(g, e * 1.36, 0.85, 0.28, 2.58, 0.6, 1.75, VELVET);
+      const bc = box(g, e * 1.36, 1.95, -0.55, 2.58, 1.7, 0.5, VELVET); bc.rotation.x = -0.13;
+    }
+    for(const e of [-1, 1]){ const tp = box(g, e * 1.9, 1.8, -0.5, 1.25, 1.25, 0.4, M(e < 0 ? 0xc9a877 : 0xa34a38)); tp.rotation.x = -0.13; tp.rotation.y = e * 0.3; }
   } else if(kind === 'table'){
-    box(g, 0, 2.35, 0, 3.6, 0.28, 2.4, M1);
-    for(const lx of [-1.55, 1.55]) for(const lz of [-0.95, 0.95]) box(g, lx, 1.1, lz, 0.28, 2.2, 0.28, M1);
+    box(g, 0, 2.35, 0, 3.6, 0.28, 2.4, WALNUT);
+    for(const lx of [-1.55, 1.55]) for(const lz of [-0.95, 0.95]) box(g, lx, 1.1, lz, 0.28, 2.2, 0.28, WALNUT);
   } else if(kind === 'wardrobe'){
-    box(g, 0, 3.5, 0, 4.0, 7.0, 1.8, M1);
-    box(g, -1.0, 3.5, 0.95, 1.85, 6.6, 0.1, M2);
-    box(g, 1.0, 3.5, 0.95, 1.85, 6.6, 0.1, M2);
+    box(g, 0, 3.5, 0, 4.0, 7.0, 1.8, WALNUT);
+    box(g, -1.0, 3.5, 0.93, 1.85, 6.6, 0.08, CARVED);
+    box(g, 1.0, 3.5, 0.93, 1.85, 6.6, 0.08, CARVED);
+    box(g, 0, 7.12, 0, 4.15, 0.25, 1.95, WALNUT);
   }
   return g;
 }
