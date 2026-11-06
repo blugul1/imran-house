@@ -177,9 +177,9 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 // CONCEPT ONLY — a human expert verifies before anything is built.
 function generatePlan(spec){
   const P = spec.plot, N = spec.needs, FAM = spec.family;
-  const depth = (P.left + P.right) / 2;
+  const depth = Math.min(P.left, P.right); // room envelope on the SAFE (shorter) depth — asymmetric plots never push rooms past the short edge
   const plotW = Math.max(P.front, P.back), minW = Math.min(P.front, P.back);
-  const plotArea = (P.front + P.back) / 2 * depth;
+  const plotArea = (P.front * P.right + P.back * P.left) / 2; // true quad area (shoelace)
   const hasB = !!spec.basement;
   const gally = minW >= 34 ? 3.5 : 2.5;
   const frontSet = N.carPorch ? 13 : 7;
@@ -195,6 +195,7 @@ function generatePlan(spec){
   if(P.front !== P.back) warnings.push('ٹیڑھا (ٹریپیزوئیڈ) پلاٹ: ٹیڑھ مشرقی کنارے پر لی گئی ہے؛ کمرے اندرونی مستطیل میں ہیں، اضافی جگہ گلی/صحن میں آتی ہے');
   if(Math.max(P.front, P.back) / Math.min(P.front, P.back) > 1.6) warnings.push('سامنے اور پیچھے کی پیمائش میں بہت بڑا فرق ہے — ایک بار اصل پلاٹ سے دوبارہ ملا لیں؛ غلط پیمائش پر نقشہ بھی غلط بنے گا');
   if(Math.max(P.left, P.right) / Math.min(P.left, P.right) > 1.35) warnings.push('دائیں اور بائیں گہرائی میں بڑا فرق ہے — پیمائش دوبارہ ملا لیں');
+  if(P.left !== P.right) warnings.push('دائیں/بائیں گہرائی مختلف ہے (بائیں ' + P.left + '، دائیں ' + P.right + ' فٹ) — کمرے محفوظ کم گہرائی (' + depth + ' فٹ) پر بنے ہیں؛ لمبی سمت کی اضافی جگہ زمین پر گلی/صحن میں دکھائی دے گی');
   const spineW = W >= 27 ? 5 : 4.5;
   const sx0 = (x0 + x1) / 2 - spineW / 2, sx1 = sx0 + spineW;   // gallery spine
   const colW = (W - spineW) / 2;                                 // west / east column width
@@ -341,8 +342,8 @@ function generatePlan(spec){
   // true plot polygon (plot coords: x from west edge, z from street/front):
   // west edge straight; the taper is carried on the east edge.
   const plotPoly = spec.mirror
-    ? [ { x: plotW, z: 0 }, { x: plotW, z: depth }, { x: plotW - P.back, z: depth }, { x: plotW - P.front, z: 0 } ]
-    : [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
+    ? [ { x: plotW, z: 0 }, { x: plotW, z: P.left }, { x: plotW - P.back, z: P.right }, { x: plotW - P.front, z: 0 } ]
+    : [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: P.right }, { x: 0, z: P.left } ];
   return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, variant, layout, mirror: !!spec.mirror } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan };
@@ -355,9 +356,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan };
 const TYPE_LABELS = { living: 'لیونگ روم', lounge: 'لاؤنج', drawing: 'ڈرائنگ روم', bed: 'بیڈ روم', bath: 'باتھ', kitchen: 'کچن', store: 'اسٹور', study: 'مطالعہ', hall: 'ہال' };
 function generateFromRooms(spec){
   const P = spec.plot, FAM = spec.family;
-  const depth = (P.left + P.right) / 2;
+  const depth = Math.min(P.left, P.right);
   const plotW = Math.max(P.front, P.back), minW = Math.min(P.front, P.back);
-  const plotArea = (P.front + P.back) / 2 * depth;
+  const plotArea = (P.front * P.right + P.back * P.left) / 2;
   const hasB = !!spec.basement;
   const gally = minW >= 34 ? 3.5 : 2.5;
   const frontSet = spec.needs && spec.needs.carPorch ? 13 : 7;
@@ -430,7 +431,7 @@ function generateFromRooms(spec){
   const covered = W * D, levels = floors + (hasB ? 1 : 0);
   const greyLo = covered * floors * 3000 + (hasB ? covered * 4000 : 0);
   const greyHi = covered * floors * 3300 + (hasB ? covered * 4600 : 0);
-  const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
+  const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: P.right }, { x: 0, z: P.left } ];
   return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, fromPlan: true, inputRooms: Object.values(spec.roomSets || {}).reduce((a, l) => a + l.length, 0), confirmedBy: spec.confirmedBy || '', confirmedAt: spec.confirmedAt || '' } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromRooms };
@@ -637,6 +638,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const ELEV_PLASTER = { modern: 0xedf0f2, classic: 0xe7d3ab, kashmiri: 0xe3c298 };
   const ELEV_GLASS = { modern: 0x47617a, classic: 0x7d8fa3, kashmiri: 0x5f7d8c };
   let ELEV = 'modern', elevGroups = null, curSpec = null;
+  let PARAPET = 'cap', ACCENT = 'none', parapetGroups = null, accentGroups = null;
+  const PARAPET_NAMES = { cap: 'سادہ کیپ', cornice: 'کارنس', merlon: 'کنگرے دار' };
+  const ACCENT_NAMES = { none: 'کوئی نہیں', strip: 'داخلی پٹی', frame: 'داخلی فریم' };
   // ---------- construction grades (Client Premium CP-3: demo factors, field rates later) ----------
   const GRADES = { basic: { name: 'بنیادی', f: 0.85 }, std: { name: 'درمیانہ', f: 1.0 }, prem: { name: 'پریمیم', f: 1.35 } };
   const GRADE_DESC = { basic: 'بنیادی درجہ: سادہ مگر مضبوط مٹیریل — سادہ فٹنگ، معیاری رنگ و ٹائل۔', std: 'درمیانہ درجہ: اچھا معیاری مٹیریل و فٹنگ — عام گھروں کا معمولی درجہ۔', prem: 'پریمیم درجہ: اعلیٰ مٹیریل و فنش — بہتر ٹائل و پتھر، اچھی فٹنگ و فکسچر۔' };
@@ -819,6 +823,30 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       wallBand(elevGroups.kashmiri, ry - 0.45, 0.95, 0.3, MAT.carved);
       capBand(elevGroups.kashmiri, ry + 2.04, 0.32, 0.85, MAT.walnut);
       for(const k in elevGroups) HOUSE.add(elevGroups[k]);
+      // parapet axis (style-independent): cap = the style's own flat cap;
+      // cornice = a proud crowning band; merlon = stepped کنگرے along the
+      // FRONT parapet — the regional silhouette. 3 styles x 3 parapets x 3
+      // accents = 27 genuinely different fronts from one plan.
+      parapetGroups = { cap: new THREE.Group(), cornice: new THREE.Group(), merlon: new THREE.Group() };
+      capBand(parapetGroups.cornice, ry + 2.3, 0.42, 1.05, MAT.elevCream);
+      B(parapetGroups.merlon, ccx, ry + 2.31, zz0, W, 0.24, 0.62, MAT.plaster, stPlaster);
+      for(let mxp = x0 + 1.2; mxp <= x1 - 1.1; mxp += 1.9) B(parapetGroups.merlon, MX(mxp), ry + 2.66, zz0, 1.15, 0.85, 0.62, MAT.plaster, stPlaster);
+      for(const k in parapetGroups) HOUSE.add(parapetGroups[k]);
+      // front accent axis: entrance strip / full entrance frame, trimmed in
+      // each style's own material
+      accentGroups = {};
+      const ACC_MAT = { modern: MAT.elevDark, classic: MAT.elevCream, kashmiri: MAT.walnut };
+      const hallG = plan.rooms.find(r => r.fk === 'ground' && r.type === 'hall');
+      const entX = hallG ? MX(hallG.x + hallG.w / 2) : ccx;
+      for(const k in ACC_MAT){
+        const gStrip = new THREE.Group(), gFrame = new THREE.Group();
+        B(gStrip, entX, topFH / 2 + 1, zz0 - 0.42, 3.1, topFH + 2, 0.3, ACC_MAT[k], stPlaster);
+        B(gFrame, entX - 3.6, 5.4, zz0 - 0.42, 0.95, 10.8, 0.3, ACC_MAT[k], stPlaster);
+        B(gFrame, entX + 3.6, 5.4, zz0 - 0.42, 0.95, 10.8, 0.3, ACC_MAT[k], stPlaster);
+        B(gFrame, entX, 11.2, zz0 - 0.42, 8.15, 1.0, 0.3, ACC_MAT[k], stPlaster);
+        accentGroups[k] = { strip: gStrip, frame: gFrame };
+        HOUSE.add(gStrip); HOUSE.add(gFrame);
+      }
       applyElev();
     }
     // porch + car
@@ -923,8 +951,20 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     MAT.plaster.color.setHex(ELEV_PLASTER[ELEV]);
     MAT.glass.color.setHex(ELEV_GLASS[ELEV]);
     if(elevGroups) for(const k in elevGroups) elevGroups[k].visible = (k === ELEV);
+    if(parapetGroups) for(const k in parapetGroups) parapetGroups[k].visible = (k === PARAPET);
+    if(accentGroups) for(const k in accentGroups){ accentGroups[k].strip.visible = (k === ELEV && ACCENT === 'strip'); accentGroups[k].frame.visible = (k === ELEV && ACCENT === 'frame'); }
     document.querySelectorAll('[data-elev]').forEach(b => {
       const on = b.dataset.elev === ELEV;
+      b.style.background = on ? '#3DAB94' : '#12305e';
+      b.style.color = on ? '#0A1A3B' : '#EAF3EF';
+    });
+    document.querySelectorAll('[data-parapet]').forEach(b => {
+      const on = b.dataset.parapet === PARAPET;
+      b.style.background = on ? '#3DAB94' : '#12305e';
+      b.style.color = on ? '#0A1A3B' : '#EAF3EF';
+    });
+    document.querySelectorAll('[data-accent]').forEach(b => {
+      const on = b.dataset.accent === ACCENT;
       b.style.background = on ? '#3DAB94' : '#12305e';
       b.style.color = on ? '#0A1A3B' : '#EAF3EF';
     });
@@ -1096,7 +1136,69 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   };
   window.__STUDIO_SHOT = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
   // ---------- premium outputs (Client Premium CP-4): one-page print/PDF + walkthrough film ----------
-  drawer.insertAdjacentHTML('beforeend', '<h4>🎁 پریمیم آؤٹ پٹ (ڈیمو)</h4><button id="mPrint">📄 ایک صفحے کا خلاصہ — پرنٹ / PDF</button><button id="mFilm">🎬 واک تھرو فلم بنائیں (10 سیکنڈ)</button>');
+  drawer.insertAdjacentHTML('beforeend', '<h4>🎁 پریمیم آؤٹ پٹ (ڈیمو)</h4><button id="mGallery">🗂 تمام آپشنز ایک ساتھ دیکھیں — 9 نقشے</button><button id="mPrint">📄 ایک صفحے کا خلاصہ — پرنٹ / PDF</button><button id="mFilm">🎬 واک تھرو فلم بنائیں (10 سیکنڈ)</button>');
+  // ---------- options gallery: one measurement, nine plans side by side ----------
+  function drawThumb(cv, plan){
+    const ctx = cv.getContext('2d'), m = plan.meta, W2 = cv.width, H2 = cv.height;
+    ctx.fillStyle = '#0A1A3B'; ctx.fillRect(0, 0, W2, H2);
+    const xs = m.plotPoly.map(p => p.x), zs = m.plotPoly.map(p => p.z);
+    const bx0 = Math.min(...xs), bx1 = Math.max(...xs), bz0 = Math.min(...zs), bz1 = Math.max(...zs);
+    const sc = Math.min((W2 - 14) / (bx1 - bx0), (H2 - 14) / (bz1 - bz0));
+    const ox = (W2 - (bx1 - bx0) * sc) / 2, oy = (H2 - (bz1 - bz0) * sc) / 2;
+    const X = x => ox + (x - bx0) * sc, Z = z => oy + (z - bz0) * sc;
+    ctx.beginPath();
+    m.plotPoly.forEach((p, i) => i ? ctx.lineTo(X(p.x), Z(p.z)) : ctx.moveTo(X(p.x), Z(p.z)));
+    ctx.closePath();
+    ctx.fillStyle = '#14263f'; ctx.fill();
+    ctx.strokeStyle = '#3DAB94'; ctx.lineWidth = 1.5; ctx.stroke();
+    const COL = { bed: '#3DAB94', bath: '#4a90c4', kitchen: '#c47f42', drawing: '#7a6fc9', living: '#7a6fc9', lounge: '#7a6fc9', study: '#b0526b', store: '#8a8f98', hall: '#33507e', circ: '#223c60', court: '#3f7a3a' };
+    for(const r of plan.rooms.filter(r => r.fk === 'ground')){
+      ctx.fillStyle = COL[r.type] || '#555';
+      ctx.fillRect(X(r.x), Z(r.z), Math.max(1.5, r.w * sc), Math.max(1.5, r.d * sc));
+    }
+  }
+  function openGallery(){
+    if(!PLAN || !lastAutoSpec){ toast(PLAN ? 'یہ گیلری خودکار نقشوں کے لیے ہے — تصدیق شدہ نقشہ آپ کا اپنا ہے' : 'پہلے نقشہ بنائیں'); return; }
+    let gp = $('galleryPanel');
+    if(!gp){
+      gp = document.createElement('div');
+      gp.id = 'galleryPanel';
+      gp.style.cssText = 'position:fixed;inset:0;z-index:120;background:rgba(6,14,28,.98);overflow-y:auto;padding:14px 12px 30px;display:none';
+      document.body.appendChild(gp);
+    }
+    let html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:17px">🗂 ایک پیمائش — 9 نقشے</b><button id="galClose" style="background:#12305e;color:#EAF3EF;border:1px solid #2b4d82;border-radius:10px;padding:7px 14px;font-family:inherit;cursor:pointer">✕ بند کریں</button></div>'
+      + '<div style="color:#9db8d6;font-size:13px;line-height:1.9;margin:6px 0 10px">ہر کارڈ آپ کی اسی پیمائش کا الگ نقشہ ہے (گراؤنڈ فلور کا پلان)۔ پسندیدہ کارڈ دبائیں — وہی نقشہ بڑا بن جائے گا۔ آئینہ (الٹا) نقشہ فارم کے ٹوگل سے الگ لگتا ہے۔ رنگ: <span style="color:#3DAB94">■</span> بیڈ <span style="color:#4a90c4">■</span> باتھ <span style="color:#c47f42">■</span> کچن <span style="color:#7a6fc9">■</span> لیونگ/ڈرائنگ <span style="color:#3f7a3a">■</span> صحن</div>'
+      + '<div id="galGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px"></div>';
+    gp.innerHTML = html;
+    gp.style.display = 'block';
+    gp.querySelector('#galClose').onclick = () => { gp.style.display = 'none'; };
+    const grid = gp.querySelector('#galGrid');
+    for(const L of ['guest', 'family', 'court']) for(const V of ['A', 'B', 'C']){
+      const spec2 = Object.assign({}, lastAutoSpec, { layout: L, variant: V });
+      const p2 = generatePlan(spec2);
+      const qa = qaCheck(p2);
+      const nP = qa.filter(q => q.s === 'PASS').length, nW = qa.filter(q => q.s === 'WARN').length, nF = qa.filter(q => q.s === 'FAIL').length;
+      const ct = p2.rooms.find(r => r.fk === 'ground' && r.type === 'court');
+      const card = document.createElement('div');
+      card.style.cssText = 'background:#0d2247;border:1px solid #2b4d82;border-radius:12px;padding:8px;cursor:pointer';
+      card.innerHTML = '<canvas width="260" height="170" style="width:100%;border-radius:8px"></canvas>'
+        + '<b style="font-size:14px">' + FAMILY_NAMES[L] + ' · ' + V + ' — ' + VARIANT_NAMES[V] + '</b>'
+        + '<div style="color:#9db8d6;font-size:12.5px;line-height:1.85">کمرے: ' + p2.rooms.length + ' · بیڈ: ' + p2.rooms.filter(r => r.type === 'bed').length
+        + (ct ? ' · صحن: ' + Math.round(ct.w) + '×' + Math.round(ct.d) : '')
+        + '<br>QA: ✓' + nP + ' ⚠' + nW + (nF ? ' ✗' + nF : '') + ' · بینڈ: ' + (p2.meta.greyBand[0] / 1e7).toFixed(2) + '–' + (p2.meta.greyBand[1] / 1e7).toFixed(2) + ' کروڑ</div>'
+        + '<div style="color:#3DAB94;font-size:13px;font-weight:700;margin-top:2px">یہی نقشہ بنائیں ←</div>';
+      drawThumb(card.querySelector('canvas'), p2);
+      card.onclick = () => {
+        lastAutoSpec.layout = L; lastAutoSpec.variant = V;
+        const fs = $('f_family'); if(fs) fs.value = L;
+        gp.style.display = 'none';
+        buildHouse(lastAutoSpec);
+        toast('نقشہ لاگو: ' + FAMILY_NAMES[L] + ' · ' + V + ' — ' + VARIANT_NAMES[V]);
+      };
+      grid.appendChild(card);
+    }
+  }
+  drawer.querySelector('#mGallery').onclick = () => openGallery();
   function buildPrintSheet(){
     const p = PLAN, m = p.meta, spec = curSpec || {};
     const cnt = t => p.rooms.filter(r => r.type === t).length;
@@ -1187,7 +1289,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
       + (m.layout ? '<br>ترتیب (فیملی): <b>' + FAMILY_NAMES[m.layout] + '</b>' + (m.mirror ? ' · <b>آئینہ (الٹا) نقشہ</b>' : '') + ' <span style="color:#9db8d6;font-size:12.5px">(ترتیب بدلنے کے لیے فارم سے نیا نقشہ بنائیں)</span>' : '')
-      + '<br>باہر کی لک (ایلیویشن): <b>' + ELEV_NAMES[ELEV] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر «باہر کی لک» بٹنوں سے اسٹائل بدل کر فرق دیکھیں — نقشہ و پیمائش وہی رہتی ہے)</span>'
+      + '<br>باہر کی لک (ایلیویشن): <b>' + ELEV_NAMES[ELEV] + '</b> · پیراپٹ: <b>' + PARAPET_NAMES[PARAPET] + '</b> · اگلا لہجہ: <b>' + ACCENT_NAMES[ACCENT] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر کے پینل سے بدل کر فرق دیکھیں: 3 انداز × 3 پیراپٹ × 3 لہجے = 27 اگلے حصے — نقشہ و پیمائش وہی رہتی ہے)</span>'
       + (Object.keys(FIN).filter(k => FIN[k] !== 'std').length ? '<br>فنش انتخاب: <b>' + Object.keys(FIN).filter(k => FIN[k] !== 'std').length + ' کمروں</b> میں فرش کی فنش بدلی گئی — <span style="color:#d8b25c">ڈیمو فنش؛ ریٹ اصل کیٹلاگ سے آئے گا</span>' : '')
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
       + '<br>پروگرام: بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen') + ' · لیونگ/لاؤنج ' + (cnt('living') + cnt('lounge')) + ' · اسٹور ' + cnt('store')
@@ -1297,18 +1399,38 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   (function elevBarInit(){
     const bar = document.createElement('div');
     bar.id = 'elevBar';
-    bar.style.cssText = 'position:fixed;top:112px;left:50%;transform:translateX(-50%);z-index:84;display:none;gap:6px;align-items:center;background:rgba(10,22,44,.92);border:1px solid #2b4d82;border-radius:999px;padding:5px 8px;box-shadow:0 8px 24px rgba(0,0,0,.35)';
-    const cap = document.createElement('span');
-    cap.textContent = 'باہر کی لک:';
-    cap.style.cssText = 'color:#9db8d6;font-size:13px;padding:0 4px;white-space:nowrap';
-    bar.appendChild(cap);
+    bar.style.cssText = 'position:fixed;top:112px;left:50%;transform:translateX(-50%);z-index:84;display:none;flex-direction:column;gap:4px;background:rgba(10,22,44,.94);border:1px solid #2b4d82;border-radius:16px;padding:7px 9px;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:94vw';
+    const chipCss = 'border:1px solid #2b4d82;border-radius:999px;padding:5px 11px;font-family:inherit;font-size:13px;cursor:pointer;white-space:nowrap;background:#12305e;color:#EAF3EF';
+    function mkRow(label){
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:5px;align-items:center;overflow-x:auto';
+      const cap = document.createElement('span');
+      cap.textContent = label;
+      cap.style.cssText = 'color:#9db8d6;font-size:12.5px;padding:0 2px;white-space:nowrap;min-width:52px';
+      row.appendChild(cap);
+      bar.appendChild(row);
+      return row;
+    }
+    const r1 = mkRow('باہر کی لک:');
     for(const v of ['modern', 'classic', 'kashmiri']){
       const b = document.createElement('button');
-      b.dataset.elev = v;
-      b.textContent = ELEV_NAMES[v];
-      b.style.cssText = 'border:1px solid #2b4d82;border-radius:999px;padding:6px 13px;font-family:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap;background:#12305e;color:#EAF3EF';
+      b.dataset.elev = v; b.textContent = ELEV_NAMES[v]; b.style.cssText = chipCss;
       b.onclick = () => { ELEV = v; applyElev(); toast('باہر کی لک: ' + ELEV_NAMES[v]); };
-      bar.appendChild(b);
+      r1.appendChild(b);
+    }
+    const r2 = mkRow('پیراپٹ:');
+    for(const v of ['cap', 'cornice', 'merlon']){
+      const b = document.createElement('button');
+      b.dataset.parapet = v; b.textContent = PARAPET_NAMES[v]; b.style.cssText = chipCss;
+      b.onclick = () => { PARAPET = v; applyElev(); toast('پیراپٹ: ' + PARAPET_NAMES[v]); };
+      r2.appendChild(b);
+    }
+    const r3 = mkRow('اگلا لہجہ:');
+    for(const v of ['none', 'strip', 'frame']){
+      const b = document.createElement('button');
+      b.dataset.accent = v; b.textContent = ACCENT_NAMES[v]; b.style.cssText = chipCss;
+      b.onclick = () => { ACCENT = v; applyElev(); toast('اگلا لہجہ: ' + ACCENT_NAMES[v]); };
+      r3.appendChild(b);
     }
     document.body.appendChild(bar);
   })();
