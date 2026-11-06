@@ -682,6 +682,11 @@ const LABELS = [];   // {el, fk, x, y, z, kind}
 const WALLM_CORE = WALLM.clone();
 const labelBox = $('labels');
 function addLabel(fk, x, y, z, text, kind, bg, dy){
+  // OWNER'S ORDER 6 Nov 2026: floating ROOM tags removed from all views.
+  // Room name + size info returns later as a numbered SIDE list (data lives
+  // in ROOMS + part19 roomLabel()). Door chips, stair UP/DN and route
+  // checkpoint labels are wayfinding, not room tags — they stay.
+  if(kind === 'room') return { el: { style: {} }, fk, x, y, z, kind, dy: dy || 0 };
   const el = document.createElement('div');
   el.className = 'lab ' + (kind === 'door' ? 'door' : kind === 'cp' ? 'cp' : kind === 'stair' ? 'stair' : '');
   el.textContent = text;
