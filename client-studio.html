@@ -589,6 +589,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const ELEV_PLASTER = { modern: 0xedf0f2, classic: 0xe7d3ab, kashmiri: 0xe3c298 };
   const ELEV_GLASS = { modern: 0x47617a, classic: 0x7d8fa3, kashmiri: 0x5f7d8c };
   let ELEV = 'modern', elevGroups = null, curSpec = null;
+  // ---------- construction grades (Client Premium CP-3: demo factors, field rates later) ----------
+  const GRADES = { basic: { name: 'بنیادی', f: 0.85 }, std: { name: 'درمیانہ', f: 1.0 }, prem: { name: 'پریمیم', f: 1.35 } };
+  const GRADE_DESC = { basic: 'بنیادی درجہ: سادہ مگر مضبوط مٹیریل — سادہ فٹنگ، معیاری رنگ و ٹائل۔', std: 'درمیانہ درجہ: اچھا معیاری مٹیریل و فٹنگ — عام گھروں کا معمولی درجہ۔', prem: 'پریمیم درجہ: اعلیٰ مٹیریل و فنش — بہتر ٹائل و پتھر، اچھی فٹنگ و فکسچر۔' };
+  let GRADE = 'std';
   function buildHouse(spec, overridePlan){
     const plan = overridePlan || generatePlan(spec);
     // plan OPTIONS bar (auto mode only — intake plans are the client's own)
@@ -982,6 +986,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   drawer.querySelector('#finRoom').addEventListener('change', e => { finSelIdx = parseInt(e.target.value, 10); refreshFinChips(); });
   drawer.querySelectorAll('[data-fin]').forEach(b => b.onclick = () => { if(!PLAN || finSelIdx < 0) return; const r = PLAN.rooms[finSelIdx]; applyFin(r, b.dataset.fin); toast(r.label + ' — فرش: ' + FLOOR_FIN_NAMES[b.dataset.fin]); });
   // delegated menu buttons (bound after innerHTML)
+  $('sumPanel').addEventListener('click', e => { const b = e.target.closest('[data-grade]'); if(!b) return; GRADE = b.dataset.grade; if(curSpec && PLAN) summary(curSpec); toast('تعمیر کا درجہ: ' + GRADES[GRADE].name + ' (ڈیمو)'); });
   drawer.querySelector('#mStages').onclick = () => stageMode(true);
   drawer.querySelector('#mSummary').onclick = () => { $('sumPanel').style.display = $('sumPanel').style.display === 'block' ? 'none' : 'block'; };
   drawer.querySelector('#mNew').onclick = () => { $('app').style.display = 'none'; $('intake').style.display = 'block'; $('menuBtn').style.display = 'none'; $('modeGrp').style.display = 'none'; $('floorGrp').style.display = 'none'; $('labels').style.display = 'none'; $('sumPanel').style.display = 'none'; stageMode(false); };
@@ -1013,6 +1018,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const p = PLAN, m = p.meta;
     const cnt = t => p.rooms.filter(r => r.type === t).length;
     const marla = (m.plotArea / 272.25).toFixed(1);
+    const GF = GRADES[GRADE].f;
+    const gb = [Math.round(m.greyBand[0] * GF / 10000) * 10000, Math.round(m.greyBand[1] * GF / 10000) * 10000];
     $('sumPanel').innerHTML = '<b style="font-size:17px">📋 خلاصہ</b>' + (spec.name ? ' — ' + spec.name : '') + (spec.loc ? ' · ' + spec.loc : '')
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
@@ -1026,9 +1033,11 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + (m.errs.length ? '<br><span class="bad">جانچ: ' + m.errs.join(' · ') + '</span>' : '<br><span class="ok">جانچ: کوئی اوورلیپ نہیں، سب کمرے حدود کے اندر ✓</span>')
       + '<br><b>QA گیٹ (خودکار جانچ):</b>' + qaCheck(p).map(q => '<br>' + (q.s === 'PASS' ? '<span class="ok">✓</span>' : q.s === 'WARN' ? '<span class="warn">⚠</span>' : '<span class="bad">✗</span>') + ' ' + q.t + ' — <span style="color:#9db8d6;font-size:12.5px">' + q.d + '</span>').join('')
       + m.warnings.map(w => '<br><span class="warn">⚠ ' + w + '</span>').join('')
-      + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ: روپے ' + (m.greyBand[0] / 1e7).toFixed(2) + ' – ' + (m.greyBand[1] / 1e7).toFixed(2) + ' کروڑ</b>'
-      + '<br><span style="color:#9db8d6;font-size:13px">حساب: اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ' + (m.basement ? ' · تہہ خانہ × 4,000–4,600 روپے/مربع فٹ' : '') + ' (بینچ مارک لاہور، اکتوبر 2026)۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
-      + (spec.budget > 0 ? '<br><b>آپ کا بجٹ: ' + spec.budget + ' لاکھ روپے</b> — ' + (spec.budget * 1e5 >= m.greyBand[1] ? '<span class="ok">گرے ڈھانچے کے پورے تخمینے سے اوپر ہے؛ فنش کے لیے بھی گنجائش بنتی ہے (اصل فنش لاگت آپ کے چناؤ پر منحصر ہے)</span>' : (spec.budget * 1e5 >= m.greyBand[0] ? 'گرے ڈھانچے کے بینڈ کے اندر ہے — فنش و فرنیچر کے لیے الگ رقم رکھنا ہو گی' : '<span class="warn">⚠ گرے ڈھانچے کے کم از کم تخمینے سے بھی کم ہے — منزلیں یا ڈھکا رقبہ گھٹائیں، یا بجٹ بڑھائیں</span>')) : '')
+      + '<br><br><b>تعمیر کا درجہ (ڈیمو):</b> <span style="display:inline-flex;gap:6px;vertical-align:middle">' + Object.keys(GRADES).map(g => '<button data-grade="' + g + '" style="border:1px solid #2b4d82;border-radius:999px;padding:5px 12px;font-family:inherit;font-size:13px;cursor:pointer;background:' + (GRADE === g ? '#3DAB94' : '#12305e') + ';color:' + (GRADE === g ? '#0A1A3B' : '#EAF3EF') + '">' + GRADES[g].name + '</button>').join('') + '</span>'
+      + '<br><span style="color:#9db8d6;font-size:13px">' + GRADE_DESC[GRADE] + ' <span style="color:#d8b25c">یہ درجے اور ان کے فرق ڈیمو ہیں — اصل بینڈ بھمبر کے تصدیق شدہ ریٹس سے بنے گا۔</span></span>'
+      + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ (' + GRADES[GRADE].name + ' درجہ): روپے ' + (gb[0] / 1e7).toFixed(2) + ' – ' + (gb[1] / 1e7).toFixed(2) + ' کروڑ</b>'
+      + '<br><span style="color:#9db8d6;font-size:13px">حساب: اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ' + (m.basement ? ' · تہہ خانہ × 4,000–4,600 روپے/مربع فٹ' : '') + ' (بینچ مارک لاہور، اکتوبر 2026)' + (GF !== 1 ? ' · درجے کا فرق ×' + GF + ' (ڈیمو) شامل' : '') + '۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
+      + (spec.budget > 0 ? '<br><b>آپ کا بجٹ: ' + spec.budget + ' لاکھ روپے</b> — ' + (spec.budget * 1e5 >= gb[1] ? '<span class="ok">گرے ڈھانچے کے پورے تخمینے سے اوپر ہے؛ فنش کے لیے بھی گنجائش بنتی ہے (اصل فنش لاگت آپ کے چناؤ پر منحصر ہے)</span>' : (spec.budget * 1e5 >= gb[0] ? 'گرے ڈھانچے کے بینڈ کے اندر ہے — فنش و فرنیچر کے لیے الگ رقم رکھنا ہو گی' : '<span class="warn">⚠ گرے ڈھانچے کے کم از کم تخمینے سے بھی کم ہے — منزلیں یا ڈھکا رقبہ گھٹائیں، یا بجٹ بڑھائیں</span>')) : '')
       + (spec.orient ? '<br>سمت نوٹ (عام رہنمائی): ' + ({ E: 'سڑک مشرق میں — اگلے کمرے صبح کی نرم دھوپ لیں گے۔', W: 'سڑک مغرب میں — اگلا حصہ شام کی تیز دھوپ و گرمی لے گا؛ پورچ و سایہ اگلے کمروں کے لیے خاص اہم ہے۔', S: 'سڑک جنوب میں — اگلے کمرے سردیوں کی دھوپ لیں گے؛ رہائشی کمروں کے لیے موزوں رخ ہے۔', N: 'سڑک شمال میں — اگلا حصہ زیادہ تر سائے میں رہے گا؛ روشن دان و صحن کی روشنی اور بھی اہم ہو جاتی ہے۔' })[spec.orient] : '')
       + '<br><button onclick="document.getElementById(\'sumPanel\').style.display=\'none\'" style="margin-top:8px">بند کریں</button>';
   }
