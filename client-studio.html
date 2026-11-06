@@ -88,6 +88,10 @@
       <label class="f">سڑک کی چوڑائی (فٹ)<input type="number" id="f_street" value="20" min="0" max="100"></label>
       <label class="f">منزلیں<select id="f_floors"><option value="1">ایک منزل</option><option value="2" selected>دو منزلیں</option></select></label>
     </div>
+    <div class="grid" style="margin-top:8px">
+      <label class="f">سڑک کس سمت ہے؟<select id="f_orient"><option value="">نہیں جانتا / فرق نہیں</option><option value="E">مشرق</option><option value="W">مغرب</option><option value="S">جنوب</option><option value="N">شمال</option></select></label>
+      <label class="f">کل بجٹ (لاکھ روپے — اختیاری)<input type="number" id="f_budget" value="" min="0" max="5000" placeholder="مثلاً 85"></label>
+    </div>
   </fieldset>
   <fieldset><legend>👨‍👩‍👧 گھر والے</legend>
     <div class="grid3">
@@ -107,6 +111,10 @@
     <label class="chk"><input type="checkbox" id="f_study"> مطالعہ / ہوم اسکول کمرہ</label>
     <label class="chk"><input type="checkbox" id="f_basement"> تہہ خانہ (بیسمنٹ) بھی ہو — ڈرائنگ ہال و اضافی کمرے نیچے</label>
   </fieldset>
+  <div style="background:#12305e;border:1px solid #2b4d82;border-radius:12px;padding:10px 14px;margin:10px 0;font-size:13.5px;line-height:2;color:#c8d9ee">
+    <b style="color:#8fd8c8">آگے کیا ملے گا:</b> یہی صفحہ آپ کے سامنے 2D + 3D نقشہ بنائے گا، پھر تعمیر کے مراحل قدم بہ قدم، آخر میں فرنشڈ گھر۔ ساتھ خودکار جانچ (QA) کی رپورٹ، گرے ڈھانچے کی لاگت کا تخمینہ بینڈ، اور کمروں کی فہرست نمبر و سائز کے ساتھ۔ نقشہ بننے کے بعد تین آپشن بھی آئیں گے: معیاری، بڑے کمرے، بڑا صحن۔<br>
+    <b style="color:#8fd8c8">ہر نقشے میں ہمیشہ شامل:</b> ہر منزل پر کچن (کھڑکی والی دیوار پر)، روشن دان / صحن، گیلری و سیڑھی ہال، اور اوپر نیچے ایک سیدھ میں باتھ روم (اسٹیک) — یہ چیزیں اختیاری نہیں، اصول ہیں۔
+  </div>
   <button id="buildBtn">🏠 نقشہ بنائیں — گھر بنتا دیکھیں</button>
   <p class="sub" style="margin-top:10px">یہ تصوراتی نقشہ ہے: پیمائشیں آپ کی دی ہوئی، ترتیب طے شدہ اصولوں سے۔ حتمی نقشہ و تعمیر سے پہلے ماہر (انجینئر/آرکیٹیکٹ) کی تصدیق لازم ہے۔</p>
   </div>
@@ -176,13 +184,29 @@ function generatePlan(spec){
   if(D < 34) warnings.push('پلاٹ کی گہرائی کم ہے — پروگرام گھٹایا گیا ہے');
   if(hasB) warnings.push('تہہ خانہ: روشنی لائٹ ویل و اگلے حصے سے آئے گی — واٹر پروفنگ، نکاسی و ہوا کی ماہر تصدیق لازمی');
   if(P.front !== P.back) warnings.push('ٹیڑھا (ٹریپیزوئیڈ) پلاٹ: ٹیڑھ مشرقی کنارے پر لی گئی ہے؛ کمرے اندرونی مستطیل میں ہیں، اضافی جگہ گلی/صحن میں آتی ہے');
+  if(Math.max(P.front, P.back) / Math.min(P.front, P.back) > 1.6) warnings.push('سامنے اور پیچھے کی پیمائش میں بہت بڑا فرق ہے — ایک بار اصل پلاٹ سے دوبارہ ملا لیں؛ غلط پیمائش پر نقشہ بھی غلط بنے گا');
+  if(Math.max(P.left, P.right) / Math.min(P.left, P.right) > 1.35) warnings.push('دائیں اور بائیں گہرائی میں بڑا فرق ہے — پیمائش دوبارہ ملا لیں');
   const spineW = W >= 27 ? 5 : 4.5;
   const sx0 = (x0 + x1) / 2 - spineW / 2, sx1 = sx0 + spineW;   // gallery spine
-  const hallD = Math.min(13, D * 0.3);                           // entry + stair hall (front of spine)
   const colW = (W - spineW) / 2;                                 // west / east column width
-  const rA = Math.max(12, Math.min(17, D * 0.30));
-  const rB = Math.max(13, Math.min(19, D * 0.36));
+  let rA = Math.max(12, Math.min(17, D * 0.30));
+  let rB = Math.max(13, Math.min(19, D * 0.36));
+  // Layout variants (owner's vision — plan OPTIONS, 7 Nov 2026):
+  // A = معیاری (the frozen standard). B = بڑے کمرے (deeper middle row: the
+  // bedrooms grow; front row gives a little, the lightwell shrinks a little).
+  // C = بڑا صحن (the back court grows from a 7 ft lightwell to a real court;
+  // the gallery shortens by the same amount). All clamps keep rows sane on
+  // small plots; the validator + QA gate below remain the safety net.
+  const variant = spec.variant || 'A';
+  if(variant === 'B'){ rB = Math.min(rB + 2.5, D * 0.44); rA = Math.max(rA - 1, 11); }
+  // entry + stair hall (front of spine) — its depth may never exceed the
+  // front row's depth, or it would collide with the middle row's wet slot
+  // (variant B shrinks the front row; this clamp is a no-op for A and C).
+  const hallD = Math.min(13, D * 0.3, rA);
   const zA1 = z0 + rA, zB1 = zA1 + rB, zC1 = z1;
+  const courtD = variant === 'C' ? Math.max(7, Math.min(11, (zC1 - z0 - hallD) - 9)) : (variant === 'B' ? 6 : 7);
+  if(variant === 'B') warnings.push('آپشن B — بڑے کمرے: بیڈ روم گہرے کیے گئے ہیں؛ بدلے میں اگلی قطار اور روشن دان قدرے چھوٹے ہیں');
+  if(variant === 'C') warnings.push('آپشن C — بڑا صحن: پچھلا صحن ' + courtD + ' فٹ کشادہ؛ گیلری اسی قدر چھوٹی ہے');
   const rooms = [], doors = [], windows = [];
   let uid = 0;
   function room(fk, type, label, x, z, w, d, half){ const r = { id: 'r' + (uid++), fk, type, label, x, z, w, d, half }; rooms.push(r); return r; }
@@ -202,7 +226,7 @@ function generatePlan(spec){
   function buildFloor(fk, top, isBase){
     // circulation: stair hall (front spine) + gallery
     room(fk, 'hall', top ? 'سیڑھی ہال' : (isBase ? 'سیڑھی ہال' : 'داخلی ہال'), sx0, z0, spineW + 3, hallD, 'C');
-    room(fk, 'circ', 'گیلری', sx0, z0 + hallD, spineW, (zB1 - z0 - hallD) + (zC1 - zB1) - 7, 'C');
+    room(fk, 'circ', 'گیلری', sx0, z0 + hallD, spineW, (zB1 - z0 - hallD) + (zC1 - zB1) - courtD, 'C');
     // Row A (front): basement west = drawing hall; ground = living; top = lounge
     const livA = isBase
       ? room(fk, 'drawing', 'ڈرائنگ ہال', x0, z0, colW - 1.5, rA, 'W')
@@ -221,9 +245,14 @@ function generatePlan(spec){
     }
     // Row C (back): kitchen west, court centre (open / lightwell in basement), bath+store east
     const kitC = room(fk, 'kitchen', 'کچن', x0, zB1, colW, zC1 - zB1, 'W');
-    room(fk, 'court', isBase ? 'لائٹ ویل' : 'روشن دان', sx0, zC1 - 7, spineW, 7, 'C');
+    room(fk, 'court', isBase ? 'لائٹ ویل' : (courtD >= 9 ? 'کھلا صحن' : 'روشن دان'), sx0, zC1 - courtD, spineW, courtD, 'C');
     const bwC = Math.min(7, colW);
-    const bathC = room(fk, 'bath', 'باتھ', sx1 + colW - bwC, zB1, bwC, 9, 'E');
+    // back-row bath depth clamps to the row itself — on shallow plots the
+    // fixed 9 ft used to push the bath OUTSIDE the envelope (caught by the
+    // 10-plot checklist, 7 Nov 2026: 25x50 and 18x45 both failed here).
+    const bathCD = Math.min(9, zC1 - zB1);
+    if(bathCD < 7 && !warnings.some(w => w.includes('پچھلی قطار'))) warnings.push('پچھلی قطار کم گہری ہے — پچھلا باتھ تنگ (' + bathCD.toFixed(1) + ' فٹ) ہو گا؛ ماہر سے جائزہ ضروری');
+    const bathC = room(fk, 'bath', 'باتھ', sx1 + colW - bwC, zB1, bwC, bathCD, 'E');
     const storeC = room(fk, 'store', 'اسٹور', sx1, zB1, colW - bwC, zC1 - zB1, 'E');
     const all = [livA, drA, bedB1, bedB2, bathB, kitC, bathC, storeC].filter(Boolean);
     for(const r of all){ doorToSpine(r); outerWin(r); }
@@ -268,7 +297,7 @@ function generatePlan(spec){
   // true plot polygon (plot coords: x from west edge, z from street/front):
   // west edge straight; the taper is carried on the east edge.
   const plotPoly = [ { x: 0, z: 0 }, { x: P.front, z: 0 }, { x: P.back, z: depth }, { x: 0, z: depth } ];
-  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders } };
+  return { rooms, doors, windows, meta: { plotArea: Math.round(plotArea), coveredPerFloor: Math.round(covered), coveredTotal: Math.round(covered * levels), x0, z0, x1, z1, W, D, depth, plotW, floors, levels, basement: hasB, plotPoly, warnings, errs, stackOk, stackN, greyBand: [greyLo, greyHi], familyTotal: FAM.adults + FAM.children + FAM.elders, variant } };
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan };
 
@@ -434,6 +463,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       name: $('f_name').value.trim(), loc: $('f_loc').value.trim(),
       plot: { front: num('f_front') || 30, back: num('f_back') || 30, left: num('f_left') || 60, right: num('f_right') || 60 },
       street: num('f_street'),
+      budget: num('f_budget'), orient: $('f_orient').value,
       floors: +$('f_floors').value, basement: $('f_basement').checked,
       family: { adults: num('f_adults'), children: num('f_children'), elders: num('f_elders') },
       needs: { bedrooms: +$('f_beds').value, baths: +$('f_baths').value, drawing: $('f_drawing').checked, carPorch: $('f_porch').checked, study: $('f_study').checked }
@@ -543,8 +573,24 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const MX = x => x - PLAN.meta.plotW / 2, MZ = z => z - PLAN.meta.depth / 2;
   function B(parent, x, y, z, w, h, d, mat, st){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if(st != null) m.userData.st = st; parent.add(m); return m; }
   // ---------- build the house ----------
+  const VARIANT_NAMES = { A: 'معیاری', B: 'بڑے کمرے', C: 'بڑا صحن' };
+  let lastAutoSpec = null;
   function buildHouse(spec, overridePlan){
     const plan = overridePlan || generatePlan(spec);
+    // plan OPTIONS bar (auto mode only — intake plans are the client's own)
+    const vb = $('variantBar');
+    if(vb){
+      if(overridePlan){ vb.style.display = 'none'; lastAutoSpec = null; }
+      else {
+        lastAutoSpec = spec;
+        vb.style.display = 'flex';
+        vb.querySelectorAll('button').forEach(b => {
+          const on = b.dataset.v === (spec.variant || 'A');
+          b.style.background = on ? '#3DAB94' : '#12305e';
+          b.style.color = on ? '#0A1A3B' : '#EAF3EF';
+        });
+      }
+    }
     // bedroom count honour (auto mode only — a confirmed plan is never relabelled)
     let beds = plan.rooms.filter(r => r.type === 'bed');
     if(!overridePlan && spec.needs.bedrooms < beds.length){
@@ -866,6 +912,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const marla = (m.plotArea / 272.25).toFixed(1);
     $('sumPanel').innerHTML = '<b style="font-size:17px">📋 خلاصہ</b>' + (spec.name ? ' — ' + spec.name : '') + (spec.loc ? ' · ' + spec.loc : '')
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
+      + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
       + '<br>پروگرام: بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen') + ' · لیونگ/لاؤنج ' + (cnt('living') + cnt('lounge')) + ' · اسٹور ' + cnt('store')
       + '<br>اہلِ خانہ: ' + m.familyTotal + ' افراد'
@@ -876,6 +923,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + m.warnings.map(w => '<br><span class="warn">⚠ ' + w + '</span>').join('')
       + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ: روپے ' + (m.greyBand[0] / 1e7).toFixed(2) + ' – ' + (m.greyBand[1] / 1e7).toFixed(2) + ' کروڑ</b>'
       + '<br><span style="color:#9db8d6;font-size:13px">حساب: اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ' + (m.basement ? ' · تہہ خانہ × 4,000–4,600 روپے/مربع فٹ' : '') + ' (بینچ مارک لاہور، اکتوبر 2026)۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
+      + (spec.budget > 0 ? '<br><b>آپ کا بجٹ: ' + spec.budget + ' لاکھ روپے</b> — ' + (spec.budget * 1e5 >= m.greyBand[1] ? '<span class="ok">گرے ڈھانچے کے پورے تخمینے سے اوپر ہے؛ فنش کے لیے بھی گنجائش بنتی ہے (اصل فنش لاگت آپ کے چناؤ پر منحصر ہے)</span>' : (spec.budget * 1e5 >= m.greyBand[0] ? 'گرے ڈھانچے کے بینڈ کے اندر ہے — فنش و فرنیچر کے لیے الگ رقم رکھنا ہو گی' : '<span class="warn">⚠ گرے ڈھانچے کے کم از کم تخمینے سے بھی کم ہے — منزلیں یا ڈھکا رقبہ گھٹائیں، یا بجٹ بڑھائیں</span>')) : '')
+      + (spec.orient ? '<br>سمت نوٹ (عام رہنمائی): ' + ({ E: 'سڑک مشرق میں — اگلے کمرے صبح کی نرم دھوپ لیں گے۔', W: 'سڑک مغرب میں — اگلا حصہ شام کی تیز دھوپ و گرمی لے گا؛ پورچ و سایہ اگلے کمروں کے لیے خاص اہم ہے۔', S: 'سڑک جنوب میں — اگلے کمرے سردیوں کی دھوپ لیں گے؛ رہائشی کمروں کے لیے موزوں رخ ہے۔', N: 'سڑک شمال میں — اگلا حصہ زیادہ تر سائے میں رہے گا؛ روشن دان و صحن کی روشنی اور بھی اہم ہو جاتی ہے۔' })[spec.orient] : '')
       + '<br><button onclick="document.getElementById(\'sumPanel\').style.display=\'none\'" style="margin-top:8px">بند کریں</button>';
   }
   // ---------- numbered room side list (owner's order 6 Nov 2026) ----------
@@ -947,6 +996,25 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
     window.__ROOMLIST = { count: ordered.length, open: () => { panel.style.display = 'block'; }, close: () => { panel.style.display = 'none'; }, panel };
   }
+  // ---------- plan options bar (A معیاری · B بڑے کمرے · C بڑا صحن) ----------
+  (function variantBarInit(){
+    const bar = document.createElement('div');
+    bar.id = 'variantBar';
+    bar.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:84;display:none;gap:6px;align-items:center;background:rgba(10,22,44,.92);border:1px solid #2b4d82;border-radius:999px;padding:5px 8px;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+    const cap = document.createElement('span');
+    cap.textContent = 'نقشے کے آپشن:';
+    cap.style.cssText = 'color:#9db8d6;font-size:13px;padding:0 4px;white-space:nowrap';
+    bar.appendChild(cap);
+    for(const v of ['A', 'B', 'C']){
+      const b = document.createElement('button');
+      b.dataset.v = v;
+      b.textContent = v + ' — ' + VARIANT_NAMES[v];
+      b.style.cssText = 'border:1px solid #2b4d82;border-radius:999px;padding:6px 13px;font-family:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap;background:#12305e;color:#EAF3EF';
+      b.onclick = () => { if(lastAutoSpec){ lastAutoSpec.variant = v; buildHouse(lastAutoSpec); } };
+      bar.appendChild(b);
+    }
+    document.body.appendChild(bar);
+  })();
   // ---------- labels + render loop ----------
   const v3 = new THREE.Vector3();
   function animate(){
