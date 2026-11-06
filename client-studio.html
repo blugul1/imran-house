@@ -49,6 +49,11 @@
   #p_prev img,#p_prev embed{width:100%;max-height:330px;object-fit:contain;border-radius:10px;border:1px solid #2b4d82;background:#fff}
   #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#12305e;border:1px solid #3dab94;color:#eaf3ef;border-radius:12px;padding:8px 16px;z-index:99;display:none;line-height:1.9;max-width:92vw;text-align:center}
   @media (max-width:820px){ #menuDrawer{top:auto;bottom:0;inset-inline:0;width:auto;max-height:72vh;border-radius:16px 16px 0 0} .bar .ttl small{display:none} #info{bottom:76px} }
+  @media print{
+    body>*:not(#printSheet){display:none !important}
+    #printSheet{display:block !important;color:#111;background:#fff;font-size:14px;line-height:2;padding:10px}
+    #printSheet img{max-width:100%;max-height:44vh;object-fit:contain;border:1px solid #999;border-radius:6px}
+  }
 </style>
 <link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0C3B2E"></head>
 <body>
@@ -140,6 +145,7 @@
 <div id="labels" style="position:fixed;inset:0;pointer-events:none;z-index:20;overflow:hidden"></div>
 <div id="menuDrawer"></div>
 <div id="sumPanel"></div>
+<div id="printSheet" style="display:none"></div>
 <div id="info"></div>
 <div id="stageBar">
   <button id="stPrev">⏮</button><button id="stPlay">▶ چلائیں</button><button id="stNext">⏭</button>
@@ -980,6 +986,53 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     } catch(e){ toast('اسکرین شاٹ نہیں بن سکی — دوبارہ کوشش کریں'); }
   };
   window.__STUDIO_SHOT = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
+  // ---------- premium outputs (Client Premium CP-4): one-page print/PDF + walkthrough film ----------
+  drawer.insertAdjacentHTML('beforeend', '<h4>🎁 پریمیم آؤٹ پٹ (ڈیمو)</h4><button id="mPrint">📄 ایک صفحے کا خلاصہ — پرنٹ / PDF</button><button id="mFilm">🎬 واک تھرو فلم بنائیں (10 سیکنڈ)</button>');
+  function buildPrintSheet(){
+    const p = PLAN, m = p.meta, spec = curSpec || {};
+    const cnt = t => p.rooms.filter(r => r.type === t).length;
+    const qa = qaCheck(p);
+    const nP = qa.filter(q => q.s === 'PASS').length, nW = qa.filter(q => q.s === 'WARN').length, nF = qa.filter(q => q.s === 'FAIL').length;
+    const GF = GRADES[GRADE].f;
+    const gb = [Math.round(m.greyBand[0] * GF / 10000) * 10000, Math.round(m.greyBand[1] * GF / 10000) * 10000];
+    const finN = Object.keys(FIN).filter(k => FIN[k] !== 'std').length;
+    let shot = '';
+    try { shot = window.__STUDIO_SHOT(); } catch(e){}
+    $('printSheet').innerHTML =
+      '<div style="border-bottom:3px solid #0C3B2E;padding-bottom:8px;margin-bottom:12px"><b style="font-size:22px;color:#0C3B2E">BBB — بھمبر بزنس بیورو</b><br><span style="color:#555">«پتا بھی، پرکھ بھی، باخبر فیصلہ» · کلائنٹ اسٹوڈیو</span></div>'
+      + '<b style="font-size:18px">گھر کا تصوراتی خلاصہ</b>' + (spec.name ? ' — برائے: <b>' + spec.name + '</b>' : '') + (spec.loc ? ' · ' + spec.loc : '') + ' · تاریخ: ' + new Date().toLocaleDateString('ur-PK')
+      + '<br>پلاٹ: ' + (spec.plot ? spec.plot.front : Math.round(m.plotW)) + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + (m.plotArea / 272.25).toFixed(1) + ' مرلہ)' + (spec.street ? ' · سڑک ' + spec.street + ' فٹ' : '')
+      + '<br>ڈھکا رقبہ: ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ') · بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen')
+      + '<br>باہر کی لک: ' + ELEV_NAMES[ELEV] + ' · تعمیر کا درجہ: ' + GRADES[GRADE].name + (finN ? ' · فرش فنش تبدیلی: ' + finN + ' کمرے' : '')
+      + (shot ? '<br><img src="' + shot + '">' : '')
+      + '<br><b>خودکار جانچ (QA):</b> ✓ ' + nP + ' پاس · ⚠ ' + nW + ' وارننگ · ✗ ' + nF + ' فیل'
+      + (m.warnings.length ? '<br><b>وارننگ:</b> ' + m.warnings.join(' · ') : '')
+      + '<br><b>گرے ڈھانچہ — تخمینہ بینڈ (' + GRADES[GRADE].name + ' درجہ): روپے ' + (gb[0] / 1e7).toFixed(2) + ' – ' + (gb[1] / 1e7).toFixed(2) + ' کروڑ</b>'
+      + '<br><span style="color:#555">یہ تخمینہ بینڈ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی ماڈل ہے، تعمیراتی ڈرائنگ نہیں — تعمیر سے پہلے انجینئر سے تصدیق شدہ نقشہ لازم ہے۔ (ڈیمو دستاویز)</span>';
+  }
+  drawer.querySelector('#mPrint').onclick = () => { if(!PLAN){ toast('پہلے نقشہ بنائیں'); return; } buildPrintSheet(); setTimeout(() => window.print(), 60); };
+  let film = null;
+  drawer.querySelector('#mFilm').onclick = () => {
+    if(!PLAN || !HOUSE){ toast('پہلے نقشہ بنائیں'); return; }
+    if(film){ toast('فلم بن رہی ہے — تھوڑا انتظار کریں'); return; }
+    if(!renderer.domElement.captureStream || typeof MediaRecorder === 'undefined'){ toast('اس براؤزر میں فلم سازی دستیاب نہیں'); return; }
+    try {
+      const rec = new MediaRecorder(renderer.domElement.captureStream(30), { mimeType: 'video/webm' });
+      const chunks = [];
+      rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        const url = URL.createObjectURL(new Blob(chunks, { type: 'video/webm' }));
+        let box = $('filmBox');
+        if(!box){ box = document.createElement('div'); box.id = 'filmBox'; box.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:97;background:rgba(10,22,44,.97);border:1px solid #3dab94;border-radius:14px;padding:12px 16px;text-align:center;line-height:2;max-width:92vw'; document.body.appendChild(box); }
+        box.innerHTML = '🎬 آپ کے گھر کی فلم تیار ہے<br><a href="' + url + '" download="ghar-walkthrough.webm" style="color:#4FBFA7;font-weight:700">⬇ فلم محفوظ کریں (webm)</a> · <a href="#" id="filmClose" style="color:#9db8d6">بند کریں</a><br><span style="color:#9db8d6;font-size:12.5px">واٹس ایپ پر گھر والوں کو بھیجنے کے لیے تیار</span>';
+        box.style.display = 'block';
+        box.querySelector('#filmClose').onclick = e => { e.preventDefault(); box.style.display = 'none'; };
+      };
+      film = { rec, t0: performance.now(), th0: orb.sph.theta, r0: orb.sph.radius, r1: Math.max(82, orb.sph.radius * 0.72), ph0: orb.sph.phi, tgY0: camTg.y };
+      rec.start(250);
+      toast('🎬 فلم بن رہی ہے — کیمرہ گھر کے گرد گھوم رہا ہے');
+    } catch(e){ toast('فلم نہیں بن سکی — دوبارہ کوشش کریں'); film = null; }
+  };
   $('menuBtn').onclick = () => drawer.classList.toggle('open');
   drawer.addEventListener('click', e => { if(e.target.closest('button') && !e.target.dataset.paint && !e.target.dataset.fin) setTimeout(() => drawer.classList.remove('open'), 80); });
   drawer.querySelectorAll('[data-paint]').forEach(b => b.onclick = () => { MAT.plaster.color.set(b.dataset.paint); toast('دیواروں کا رنگ بدل گیا'); });
@@ -1152,6 +1205,18 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const v3 = new THREE.Vector3();
   function animate(){
     requestAnimationFrame(animate);
+    if(film){
+      const t = (performance.now() - film.t0) / 1000, DUR = 10;
+      if(t >= DUR){ try { film.rec.stop(); } catch(e){} film = null; }
+      else {
+        const k = t / DUR, ease = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        orb.sph.theta = film.th0 + ease * Math.PI * 1.5;
+        orb.sph.radius = film.r0 + (film.r1 - film.r0) * ease;
+        orb.sph.phi = film.ph0 + (0.95 - film.ph0) * ease;
+        camTg.y = film.tgY0 + (6 - film.tgY0) * ease;
+        applyCam();
+      }
+    }
     if(PLAN && HOUSE){
       for(const d of labelDivs){
         const r = d._room; const base = BASES[r.fk] || 0;
