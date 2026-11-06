@@ -688,14 +688,16 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       for(const [wx, wz] of [[-2, 1.25], [2, 1.25], [-2, -1.25], [2, -1.25]]){ const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.3, 10), MAT.dark); wh.rotation.x = Math.PI / 2; wh.position.set(wx, 0.52, wz); car.add(wh); }
       car.position.set(pcx + 1, 0.3, (pz0 + pz1) / 2); car.rotation.y = Math.PI / 2; car.userData.st = stFurn; car.traverse(m => m.userData.st = stFurn); HOUSE.add(car);
     }
-    // labels
-    const labWrap = $('labels');
-    for(const r of plan.rooms){ const d = document.createElement('div'); d.className = 'lbl'; d.textContent = r.label; d.dataset.fk = r.fk; labWrap.appendChild(d); labelDivs.push(d); d._room = r; }
+    // Floating room tags REMOVED (owner's order 6 Nov 2026, applied here for
+    // the same standard as the Explorer): room names/sizes now live in the
+    // numbered side list built by buildRoomList() below — never as tags
+    // hovering over the house. labelDivs stays empty on purpose.
     $('flBase').style.display = hasB ? '' : 'none';
     if(!hasB && state.floor === 'basement'){ state.floor = 'ground'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'ground')); }
     applyStage(STAGES.length);
     applyFloor();
     summary(spec);
+    buildRoomList(plan);
     toast('نقشہ بن گیا — گھسیٹ کر گھمائیں، اسکرول سے قریب جائیں، کمرے پر کلک کریں');
   }
   // ---------- furnish v2: ANCHOR placement (production library, frozen rules) ----------
@@ -875,6 +877,75 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + '<br><br><b>گرے ڈھانچہ — تخمینہ بینڈ: روپے ' + (m.greyBand[0] / 1e7).toFixed(2) + ' – ' + (m.greyBand[1] / 1e7).toFixed(2) + ' کروڑ</b>'
       + '<br><span style="color:#9db8d6;font-size:13px">حساب: اوپری منزلیں × 3,000–3,300 روپے/مربع فٹ' + (m.basement ? ' · تہہ خانہ × 4,000–4,600 روپے/مربع فٹ' : '') + ' (بینچ مارک لاہور، اکتوبر 2026)۔ یہ تخمینہ ہے — کوٹیشن نہیں؛ اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔ یہ تصوراتی نقشہ ہے، تعمیراتی ڈرائنگ نہیں۔</span>'
       + '<br><button onclick="document.getElementById(\'sumPanel\').style.display=\'none\'" style="margin-top:8px">بند کریں</button>';
+  }
+  // ---------- numbered room side list (owner's order 6 Nov 2026) ----------
+  // Every room of THIS client's house, in order, with number + size, in one
+  // side panel. Tapping a row goes to that room: floor switch + camera +
+  // the same info card a tap on the room itself shows.
+  const FKH_UR = { basement: 'تہہ خانہ', ground: 'گراؤنڈ فلور', first: 'پہلی منزل' };
+  function buildRoomList(plan){
+    let panel = $('roomListPanel');
+    if(!panel){
+      panel = document.createElement('div');
+      panel.id = 'roomListPanel';
+      panel.style.cssText = 'position:fixed;top:64px;inset-inline-end:10px;width:min(340px,90vw);max-height:80vh;overflow-y:auto;background:rgba(10,22,44,.97);border:1px solid #3dab94;border-radius:14px;padding:12px 14px;z-index:85;display:none;box-shadow:0 14px 44px rgba(0,0,0,.5)';
+      document.body.appendChild(panel);
+      const drawer = $('menuDrawer');
+      const b = document.createElement('button');
+      b.id = 'mRoomList'; b.textContent = '📋 کمروں کی فہرست — نمبر + سائز';
+      b.onclick = () => { drawer.classList.remove('open'); $('sumPanel').style.display = 'none'; panel.style.display = 'block'; };
+      drawer.appendChild(b);
+    }
+    const ordered = [];
+    for(const fk of ['basement', 'ground', 'first']) for(const r of plan.rooms) if(r.fk === fk) ordered.push(r);
+    panel.innerHTML = '';
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:8px';
+    head.innerHTML = '<div style="flex:1;font-weight:700;color:#EAF3EF;font-size:16px">📋 کمروں کی فہرست</div>';
+    const closeB = document.createElement('button');
+    closeB.textContent = '✕';
+    closeB.style.cssText = 'width:34px;height:34px;border-radius:9px;border:1px solid #2b4d82;background:#12305e;color:#EAF3EF;font-size:15px;cursor:pointer;flex:none';
+    closeB.onclick = () => { panel.style.display = 'none'; };
+    head.appendChild(closeB);
+    panel.appendChild(head);
+    const sub = document.createElement('div');
+    sub.textContent = 'ہر کمرہ نمبر اور سائز کے ساتھ — جس کمرے کو چھوئیں، منظر وہیں چلا جائے گا۔';
+    sub.style.cssText = 'font-size:12.5px;line-height:1.9;color:#9db8d6;margin:2px 0 4px';
+    panel.appendChild(sub);
+    let n = 0, curFk = null;
+    for(const r of ordered){
+      if(r.fk !== curFk){
+        curFk = r.fk;
+        const gh = document.createElement('div');
+        gh.textContent = FKH_UR[curFk] + ' (' + ordered.filter(x => x.fk === curFk).length + ')';
+        gh.style.cssText = 'margin:8px 0 3px;font-weight:700;color:#8fd8c8;font-size:13.5px;border-bottom:2px solid #3dab94;padding-bottom:2px';
+        panel.appendChild(gh);
+      }
+      n++;
+      const num = n;
+      const row = document.createElement('button');
+      row.style.cssText = 'display:flex;align-items:center;gap:9px;width:100%;text-align:right;background:#12305e;border:1px solid #2b4d82;border-radius:10px;padding:6px 9px;margin:3px 0;cursor:pointer;font-family:inherit;color:#EAF3EF';
+      const chip = document.createElement('span');
+      chip.textContent = num;
+      chip.style.cssText = 'flex:none;min-width:30px;height:30px;line-height:30px;text-align:center;border-radius:50%;background:#3DAB94;color:#0A1A3B;font-size:13px;font-weight:700;padding:0 4px';
+      const tx = document.createElement('span');
+      const w1 = Math.round(r.w * 10) / 10, d1 = Math.round(r.d * 10) / 10;
+      tx.textContent = r.label + ' — ' + w1 + ' × ' + d1 + ' فٹ';
+      tx.style.cssText = 'flex:1;font-size:13.5px;line-height:1.8';
+      row.appendChild(chip); row.appendChild(tx);
+      row.onclick = () => {
+        panel.style.display = 'none';
+        const fb = document.querySelector('[data-fl="' + r.fk + '"]');
+        if(fb) fb.click();
+        camTg.set(MX(r.x + r.w / 2), (BASES[r.fk] || 0) + 3, MZ(r.z + r.d / 2));
+        applyCam();
+        const info = $('info');
+        info.innerHTML = '<b style="font-size:16.5px">' + num + ' · ' + r.label + '</b> · ' + r.w.toFixed(1) + ' × ' + r.d.toFixed(1) + ' فٹ · رقبہ ' + Math.round(r.w * r.d) + ' مربع فٹ<br><span style="color:#9db8d6;font-size:13px">' + FKH_UR[r.fk] + '</span>';
+        info.style.display = 'block';
+      };
+      panel.appendChild(row);
+    }
+    window.__ROOMLIST = { count: ordered.length, open: () => { panel.style.display = 'block'; }, close: () => { panel.style.display = 'none'; }, panel };
   }
   // ---------- labels + render loop ----------
   const v3 = new THREE.Vector3();
