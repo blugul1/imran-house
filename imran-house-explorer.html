@@ -3553,7 +3553,72 @@ buildFrame();
     toast('📍 منظر محفوظ — مینیو میں «' + bm.name + '» سے واپس یہیں آئیں');
   };
   renderBm();
-  window.P2 = { search: doSearch, gotoRoom, doorSearch, gotoDoor, shotData, bmCount: () => loadBm().length };
+  window.P2 = { search: doSearch, gotoRoom, doorSearch, gotoDoor, shotData, roomLabel, bmCount: () => loadBm().length };
+})();
+
+// ================= Room list — numbered side panel (owner's order 6 Nov 2026) =================
+// The floating room tags were removed at the owner's correction; the room
+// information now lives HERE: one side panel, every room in order, with its
+// number and its size. Tapping a row flies the camera to that room (same
+// gotoRoom as search). Numbering runs basement → ground → first, north
+// half before south, in the model's own room order.
+(function roomListPanel(){
+  const drawer = document.getElementById('menuDrawer');
+  if(!drawer || !window.P2) return;
+  const FK_UR = { basement: 'تہہ خانہ', ground: 'گراؤنڈ', first: 'پہلی منزل' };
+  const FK_EN = { basement: 'Basement', ground: 'Ground', first: 'First' };
+  // ordered records + their numbers
+  const ordered = [];
+  for(const fk of ['basement', 'ground', 'first']) for(const half of ['N', 'S'])
+    for(const rec of ROOMS) if(rec.fk === fk && rec.half === half) ordered.push(rec);
+  // drawer entry
+  const sec = document.createElement('div');
+  sec.innerHTML = '<h4>📋 کمروں کی فہرست</h4><button id="rlOpen">📋 سارے کمرے — نمبر + سائز</button>';
+  drawer.appendChild(sec);
+  // the panel itself
+  const panel = document.createElement('div');
+  panel.id = 'roomListPanel';
+  panel.style.cssText = 'position:fixed;right:10px;top:104px;width:min(332px,88vw);max-height:calc(100vh - 128px);overflow-y:auto;background:#FDFDFA;border:1px solid #C9D4C5;border-radius:14px;box-shadow:0 10px 30px rgba(10,26,59,.25);z-index:70;display:none;padding:10px 12px;font-family:inherit';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:2px';
+  head.innerHTML = '<div style="flex:1;font-weight:700;color:#0A1A3B;font-size:16px">📋 کمروں کی فہرست</div>';
+  const closeB = document.createElement('button');
+  closeB.textContent = '✕';
+  closeB.style.cssText = 'width:34px;height:34px;border-radius:9px;border:1px solid #C9D4C5;background:#fff;color:#0A1A3B;font-size:15px;cursor:pointer;flex:none';
+  closeB.onclick = () => { panel.style.display = 'none'; };
+  head.appendChild(closeB);
+  panel.appendChild(head);
+  const sub = document.createElement('div');
+  sub.textContent = 'ہر کمرہ نمبر اور سائز کے ساتھ — جس کمرے کو چھوئیں، کیمرہ وہیں چلا جائے گا۔';
+  sub.style.cssText = 'font-size:12.5px;line-height:1.9;color:#5A6B5E;margin-bottom:6px';
+  panel.appendChild(sub);
+  let n = 0;
+  for(const fk of ['basement', 'ground', 'first']){
+    const rows = ordered.filter(r => r.fk === fk);
+    if(!rows.length) continue;
+    const gh = document.createElement('div');
+    gh.textContent = FK_UR[fk] + ' — ' + FK_EN[fk] + ' (' + rows.length + ')';
+    gh.style.cssText = 'margin:8px 0 4px;font-weight:700;color:#0C3B2E;font-size:13.5px;border-bottom:2px solid #3DAB94;padding-bottom:2px';
+    panel.appendChild(gh);
+    for(const rec of rows){
+      n++;
+      const num = n;
+      const row = document.createElement('button');
+      row.style.cssText = 'display:flex;align-items:center;gap:9px;width:100%;text-align:right;background:#fff;border:1px solid #E1E7DC;border-radius:10px;padding:6px 9px;margin:3px 0;cursor:pointer;font-family:inherit';
+      const chip = document.createElement('span');
+      chip.textContent = num;
+      chip.style.cssText = 'flex:none;min-width:30px;height:30px;line-height:30px;text-align:center;border-radius:50%;background:#0C3B2E;color:#F7F3EA;font-size:13px;font-weight:700;padding:0 4px';
+      const tx = document.createElement('span');
+      tx.textContent = window.P2.roomLabel(rec);
+      tx.style.cssText = 'flex:1;font-size:13.5px;line-height:1.8;color:#22301F';
+      row.appendChild(chip); row.appendChild(tx);
+      row.onclick = () => { panel.style.display = 'none'; window.P2.gotoRoom(rec); };
+      panel.appendChild(row);
+    }
+  }
+  document.body.appendChild(panel);
+  sec.querySelector('#rlOpen').onclick = () => { drawer.classList.remove('open'); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; };
+  window.ROOMLIST = { count: ordered.length, open: () => { panel.style.display = 'block'; }, close: () => { panel.style.display = 'none'; }, panel };
 })();
 
 // ================= Explorer P2 bundle 2 — section plane · marble veining =================
