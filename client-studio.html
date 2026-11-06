@@ -642,6 +642,38 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const MEP = { plumb: false, elec: false };
   let mepGroups = null, MEP_COUNT = { plumb: 0, elec: 0 };
   const MEP_NOTE = 'یہ جگہ کا اندازہ ہے — اسکیمیٹک نقشہ ہے۔ اصل لائن/پوائنٹ آپ کے مستری اور انجینئر موقع پر طے کریں گے۔';
+  // ---------- builder premium: own brand, client folders, WhatsApp share ----------
+  let BUILDER = { name: '', phone: '' };
+  try { const bb = JSON.parse(localStorage.getItem('cs_builder') || 'null'); if(bb && bb.name) BUILDER = bb; } catch(e){}
+  function builderClients(){ try { return JSON.parse(localStorage.getItem('cs_clients') || '[]'); } catch(e){ return []; } }
+  function saveBuilderClients(list){ try { localStorage.setItem('cs_clients', JSON.stringify(list.slice(0, 20))); } catch(e){} }
+  function captureFormFlat(){
+    const v = id => $(id).value, c = id => $(id).checked;
+    return { name: v('f_name'), loc: v('f_loc'), front: v('f_front'), back: v('f_back'), left: v('f_left'), right: v('f_right'), street: v('f_street'), budget: v('f_budget'), orient: v('f_orient'), floors: v('f_floors'), adults: v('f_adults'), children: v('f_children'), elders: v('f_elders'), beds: v('f_beds'), baths: v('f_baths'), drawing: c('f_drawing'), porch: c('f_porch'), study: c('f_study'), basement: c('f_basement'), layout: v('f_family'), mirror: c('f_mirror'), opts: { elev: ELEV, parapet: PARAPET, accent: ACCENT, grade: GRADE } };
+  }
+  function applyFormFlat(f){
+    const s = (id, val) => { $(id).value = val; }, k = (id, val) => { $(id).checked = !!val; };
+    s('f_name', f.name || ''); s('f_loc', f.loc || ''); s('f_front', f.front); s('f_back', f.back); s('f_left', f.left); s('f_right', f.right);
+    s('f_street', f.street); s('f_budget', f.budget || ''); if(f.orient) s('f_orient', f.orient); s('f_floors', f.floors);
+    s('f_adults', f.adults); s('f_children', f.children); s('f_elders', f.elders); s('f_beds', f.beds); s('f_baths', f.baths);
+    k('f_drawing', f.drawing); k('f_porch', f.porch); k('f_study', f.study); k('f_basement', f.basement); s('f_family', f.layout || 'guest'); k('f_mirror', f.mirror);
+    if(f.opts){ ELEV = f.opts.elev || 'modern'; PARAPET = f.opts.parapet || 'cap'; ACCENT = f.opts.accent || 'none'; GRADE = f.opts.grade || 'std'; }
+  }
+  function refreshClientList(){
+    const box = $('bClients'); if(!box) return;
+    const list = builderClients();
+    box.innerHTML = list.length ? list.map((c, i) => '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dashed #2b4d82"><span style="font-size:13.5px">' + (c.flat.name || 'بے نام') + ' <span style="color:#9db8d6;font-size:12px">' + c.when + '</span></span><span style="white-space:nowrap"><button data-bopen="' + i + '" style="padding:4px 10px;font-size:12.5px">کھولیں</button> <button data-bdel="' + i + '" style="padding:4px 10px;font-size:12.5px">حذف</button></span></div>').join('')
+      : '<div style="color:#9db8d6;font-size:13px;line-height:1.9">ابھی کوئی کلائنٹ محفوظ نہیں — فارم بھر کر «موجودہ کلائنٹ محفوظ کریں» دبائیں۔ فولڈر اسی ڈیوائس/براؤزر میں رہتے ہیں (ڈیمو)۔</div>';
+    box.querySelectorAll('[data-bopen]').forEach(b => b.onclick = () => {
+      const c = builderClients()[+b.dataset.bopen]; if(!c) return;
+      applyFormFlat(c.flat);
+      $('buildBtn').click();
+      toast('کلائنٹ کھل گیا: ' + (c.flat.name || ''));
+    });
+    box.querySelectorAll('[data-bdel]').forEach(b => b.onclick = () => {
+      const l2 = builderClients(); l2.splice(+b.dataset.bdel, 1); saveBuilderClients(l2); refreshClientList(); toast('کلائنٹ حذف ہو گیا');
+    });
+  }
   const PARAPET_NAMES = { cap: 'سادہ کیپ', cornice: 'کارنس', merlon: 'کنگرے دار' };
   const ACCENT_NAMES = { none: 'کوئی نہیں', strip: 'داخلی پٹی', frame: 'داخلی فریم' };
   // ---------- construction grades (Client Premium CP-3: demo factors, field rates later) ----------
@@ -1206,6 +1238,44 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
   }
   drawer.querySelector('#mGallery').onclick = () => openGallery();
+  drawer.insertAdjacentHTML('beforeend', '<h4>🏗 بلڈر پریمیم (ڈیمو)</h4>'
+    + '<div style="font-size:13px;color:#9db8d6;line-height:1.9">اپنا برانڈ لگائیں، کلائنٹ فولڈر بنائیں، خلاصہ واٹس ایپ پر بھیجیں۔</div>'
+    + '<input id="bName" placeholder="بلڈر / فرم کا نام" style="width:100%;margin:6px 0 4px;padding:9px;border-radius:10px;background:#0d2247;color:#EAF3EF;border:1px solid #2b4d82;font-family:inherit;font-size:14px">'
+    + '<input id="bPhone" placeholder="رابطہ نمبر (واٹس ایپ)" style="width:100%;margin:0 0 6px;padding:9px;border-radius:10px;background:#0d2247;color:#EAF3EF;border:1px solid #2b4d82;font-family:inherit;font-size:14px">'
+    + '<button id="bSaveBrand" style="width:100%">برانڈ محفوظ کریں</button>'
+    + '<button id="bSaveClient" style="width:100%;margin-top:6px">💾 موجودہ کلائنٹ محفوظ کریں</button>'
+    + '<div id="bClients" style="margin-top:6px"></div>'
+    + '<button id="bWhats" style="width:100%;margin-top:8px">📲 واٹس ایپ پر خلاصہ + لنک بھیجیں</button>'
+    + '<div style="font-size:12.5px;color:#9db8d6;line-height:1.9;margin-top:6px">دیکھنے کی اطلاع (ویو ٹریکنگ) لنک سروس جڑنے پر فعال ہوگی — اور ہمیشہ کلائنٹ کو لنک پر صاف لکھی اطلاع کے ساتھ؛ خفیہ کبھی نہیں۔</div>');
+  if(BUILDER.name){ $('bName').value = BUILDER.name; $('bPhone').value = BUILDER.phone || ''; }
+  refreshClientList();
+  $('bSaveBrand').onclick = () => {
+    BUILDER = { name: $('bName').value.trim(), phone: $('bPhone').value.trim() };
+    try { localStorage.setItem('cs_builder', JSON.stringify(BUILDER)); } catch(e){}
+    if(curSpec && PLAN) summary(curSpec);
+    toast(BUILDER.name ? 'برانڈ محفوظ: ' + BUILDER.name : 'برانڈ صاف ہو گیا');
+  };
+  $('bSaveClient').onclick = () => {
+    const flat = captureFormFlat();
+    if(!flat.name){ toast('پہلے فارم میں کلائنٹ کا نام لکھیں'); return; }
+    const list = builderClients();
+    list.unshift({ when: new Date().toLocaleDateString('ur-PK'), flat });
+    saveBuilderClients(list); refreshClientList();
+    toast('کلائنٹ محفوظ: ' + flat.name + ' (کل ' + Math.min(list.length, 20) + ')');
+  };
+  $('bWhats').onclick = () => {
+    if(!PLAN || !curSpec){ toast('پہلے نقشہ بنائیں'); return; }
+    const m = PLAN.meta, GF = GRADES[GRADE].f;
+    const gb = [Math.round(m.greyBand[0] * GF / 10000) * 10000, Math.round(m.greyBand[1] * GF / 10000) * 10000];
+    const url = location.href.split('#')[0].split('?')[0];
+    const txt = '🏠 ' + (curSpec.name || 'کلائنٹ') + ' — گھر کا تصوراتی خلاصہ (BBB کلائنٹ اسٹوڈیو)\n'
+      + 'پلاٹ: ' + (curSpec.plot ? curSpec.plot.front : '') + '×' + Math.round(m.depth) + ' فٹ · ڈھکا رقبہ: ' + m.coveredTotal.toLocaleString() + ' مربع فٹ · کمرے: ' + PLAN.rooms.length + '\n'
+      + 'گرے ڈھانچہ — تخمینہ بینڈ (' + GRADES[GRADE].name + ' درجہ): روپے ' + (gb[0] / 1e7).toFixed(2) + ' – ' + (gb[1] / 1e7).toFixed(2) + ' کروڑ\n'
+      + 'اپنا نقشہ خود بنا کر دیکھیں: ' + url + '\n'
+      + 'یہ تخمینہ بینڈ ہے، کوٹیشن نہیں — اصل قیمت مقامی ریٹس و ٹھیکیدار سے طے ہو گی۔'
+      + (BUILDER.name ? '\n— ' + BUILDER.name + (BUILDER.phone ? ' · ' + BUILDER.phone : '') : '');
+    window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+  };
   function buildPrintSheet(){
     const p = PLAN, m = p.meta, spec = curSpec || {};
     const cnt = t => p.rooms.filter(r => r.type === t).length;
@@ -1217,7 +1287,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     let shot = '';
     try { shot = window.__STUDIO_SHOT(); } catch(e){}
     $('printSheet').innerHTML =
-      '<div style="border-bottom:3px solid #0C3B2E;padding-bottom:8px;margin-bottom:12px"><b style="font-size:22px;color:#0C3B2E">BBB — بھمبر بزنس بیورو</b><br><span style="color:#555">«پتا بھی، پرکھ بھی، باخبر فیصلہ» · کلائنٹ اسٹوڈیو</span></div>'
+      (BUILDER.name
+        ? '<div style="border-bottom:3px solid #0C3B2E;padding-bottom:8px;margin-bottom:12px"><b style="font-size:22px;color:#0C3B2E">' + BUILDER.name + '</b>' + (BUILDER.phone ? ' · ' + BUILDER.phone : '') + '<br><span style="color:#555">بذریعہ BBB کلائنٹ اسٹوڈیو — «پتا بھی، پرکھ بھی، باخبر فیصلہ»</span></div>'
+        : '<div style="border-bottom:3px solid #0C3B2E;padding-bottom:8px;margin-bottom:12px"><b style="font-size:22px;color:#0C3B2E">BBB — بھمبر بزنس بیورو</b><br><span style="color:#555">«پتا بھی، پرکھ بھی، باخبر فیصلہ» · کلائنٹ اسٹوڈیو</span></div>')
       + '<b style="font-size:18px">گھر کا تصوراتی خلاصہ</b>' + (spec.name ? ' — برائے: <b>' + spec.name + '</b>' : '') + (spec.loc ? ' · ' + spec.loc : '') + ' · تاریخ: ' + new Date().toLocaleDateString('ur-PK')
       + '<br>پلاٹ: ' + (spec.plot ? spec.plot.front : Math.round(m.plotW)) + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + (m.plotArea / 272.25).toFixed(1) + ' مرلہ)' + (spec.street ? ' · سڑک ' + spec.street + ' فٹ' : '')
       + '<br>ڈھکا رقبہ: ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ') · بیڈ ' + cnt('bed') + ' · باتھ ' + cnt('bath') + ' · کچن ' + cnt('kitchen')
@@ -1365,6 +1437,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
       + (m.layout ? '<br>ترتیب (فیملی): <b>' + FAMILY_NAMES[m.layout] + '</b>' + (m.mirror ? ' · <b>آئینہ (الٹا) نقشہ</b>' : '') + ' <span style="color:#9db8d6;font-size:12.5px">(ترتیب بدلنے کے لیے فارم سے نیا نقشہ بنائیں)</span>' : '')
       + ((MEP.plumb || MEP.elec) ? '<br>🔌 اسکیمیٹک تہیں آن: <b>' + [MEP.plumb ? 'پلمبنگ (' + MEP_COUNT.plumb + ' پوائنٹ)' : '', MEP.elec ? 'بجلی (' + MEP_COUNT.elec + ' پوائنٹ)' : ''].filter(Boolean).join(' · ') + '</b> — ' + MEP_NOTE : '')
+      + (BUILDER.name ? '<br>🏗 تیار کردہ: <b>' + BUILDER.name + '</b>' + (BUILDER.phone ? ' · ' + BUILDER.phone : '') : '')
       + '<br>باہر کی لک (ایلیویشن): <b>' + ELEV_NAMES[ELEV] + '</b> · پیراپٹ: <b>' + PARAPET_NAMES[PARAPET] + '</b> · اگلا لہجہ: <b>' + ACCENT_NAMES[ACCENT] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر کے پینل سے بدل کر فرق دیکھیں: 3 انداز × 3 پیراپٹ × 3 لہجے = 27 اگلے حصے — نقشہ و پیمائش وہی رہتی ہے)</span>'
       + (Object.keys(FIN).filter(k => FIN[k] !== 'std').length ? '<br>فنش انتخاب: <b>' + Object.keys(FIN).filter(k => FIN[k] !== 'std').length + ' کمروں</b> میں فرش کی فنش بدلی گئی — <span style="color:#d8b25c">ڈیمو فنش؛ ریٹ اصل کیٹلاگ سے آئے گا</span>' : '')
       + '<br>ڈھکا رقبہ: ' + m.coveredPerFloor.toLocaleString() + ' فی منزل · کل ' + m.coveredTotal.toLocaleString() + ' مربع فٹ (' + m.levels + ' سطحیں: ' + m.floors + ' منزل' + (m.basement ? ' + تہہ خانہ' : '') + ')'
