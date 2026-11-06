@@ -50,7 +50,7 @@
   #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#12305e;border:1px solid #3dab94;color:#eaf3ef;border-radius:12px;padding:8px 16px;z-index:99;display:none;line-height:1.9;max-width:92vw;text-align:center}
   @media (max-width:820px){ #menuDrawer{top:auto;bottom:0;inset-inline:0;width:auto;max-height:72vh;border-radius:16px 16px 0 0} .bar .ttl small{display:none} #info{bottom:76px} }
 </style>
-</head>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0C3B2E"></head>
 <body>
 <div class="bar">
   <div class="ttl">🏠 کلائینٹ اسٹوڈیو<small>نقشے کی پیمائش سے فرنشڈ گھر تک · تصوراتی — ماہر تصدیق لازم</small></div>
@@ -991,5 +991,5 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   sizeRenderer(); applyCam(); animate();
 })();
 </script>
-</body>
+<script>if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script></body>
 </html>

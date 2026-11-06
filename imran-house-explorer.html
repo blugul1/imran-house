@@ -60,7 +60,7 @@
   body.clean .bar, body.clean #left, body.clean #info, body.clean #mapwrap, body.clean #compass, body.clean #measureRead, body.clean #toast, body.clean #labels{display:none !important}
   body.clean #showUi{display:block}
   @media (max-width:900px){ #left{width:186px} #info{width:224px} }
-</style></head>
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0C3B2E"></head>
 <body>
 <div id="app"></div>
 <div id="labels"></div>
@@ -3677,4 +3677,4 @@ buildFrame();
   b.onclick = () => { const d = document.getElementById('menuDrawer'); if(d) d.classList.remove('open'); openAnno(); };
 })();
 </script>
-</body></html>
+<script>if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script></body></html>
