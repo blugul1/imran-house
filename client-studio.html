@@ -230,10 +230,10 @@ function generatePlan(spec){
   if(layout === 'family' && N.drawing && colW >= 8) warnings.push('ترتیب «خاندان آگے»: ڈرائنگ روم درمیانی قطار میں ہے (مہمان گیلری سے ہو کر جائیں گے) اور بیڈ روم اگلی قطار میں آ گیا ہے — اوپری منزل معیاری ترتیب پر رہتی ہے');
   if(layout === 'family' && N.drawing && colW < 8) warnings.push('ترتیب «خاندان آگے»: پلاٹ تنگ ہے — ڈرائنگ درمیان میں نہیں سما سکا، اگلی قطار میں ہی رکھا گیا ہے');
   const rooms = [], doors = [], windows = [];
-  let uid = 0;
+  let uid = 0, curFk = null; // curFk: floor being built — tags doors/windows with their floor (CAD sheets, 7 Nov 2026)
   function room(fk, type, label, x, z, w, d, half){ const r = { id: 'r' + (uid++), fk, type, label, x, z, w, d, half }; rooms.push(r); return r; }
-  function door(x, z, wall, w){ doors.push({ x, z, wall, w: w || 3 }); }
-  function win(x, z, wall, w, vent){ windows.push({ x, z, wall, w: w || 4, vent: !!vent }); }
+  function door(x, z, wall, w){ doors.push({ x, z, wall, w: w || 3, fk: curFk }); }
+  function win(x, z, wall, w, vent){ windows.push({ x, z, wall, w: w || 4, vent: !!vent, fk: curFk }); }
   function doorToSpine(r){ // door on the room edge facing the gallery spine
     if(r.x + r.w <= sx0 + 0.01) door(r.x + r.w, r.z + Math.min(3, r.d / 2), 'E');
     else if(r.x >= sx1 - 0.01) door(r.x, r.z + Math.min(3, r.d / 2), 'W');
@@ -246,6 +246,7 @@ function generatePlan(spec){
     if(r.z + r.d >= z1 - 0.01) win(r.x + r.w / 2, r.z + r.d, 'N', r.type === 'bath' ? 2 : 4.5, r.type === 'bath');
   }
   function buildFloor(fk, top, isBase){
+    curFk = fk;
     // circulation: stair hall (front spine) + gallery; family «صحن محور»
     // splits the gallery around a mid-spine court
     room(fk, 'hall', top ? 'سیڑھی ہال' : (isBase ? 'سیڑھی ہال' : 'داخلی ہال'), sx0, z0, spineW + 3, hallD, 'C');
@@ -398,13 +399,13 @@ function generateFromRooms(spec){
     // doors: east edge if the row has a gallery strip, else south edge (not on
     // the front row), else north edge; windows on envelope edges
     for(const r of rooms.filter(x => x.fk === fk && !['circ', 'court'].includes(x.type))){
-      if(r._eastStrip) doors.push({ x: r.x + r.w, z: r.z + Math.min(3, r.d / 2), wall: 'E', w: 3 });
-      else if(r.z > z0 + 0.02) doors.push({ x: r.x + r.w / 2, z: r.z, wall: 'S', w: 3 });
-      else doors.push({ x: r.x + r.w / 2, z: r.z + r.d, wall: 'N', w: 3 });
-      if(r.x <= x0 + 0.01) windows.push({ x: r.x, z: r.z + r.d / 2, wall: 'W', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath' });
-      if(r.x + r.w >= x1 - 0.01) windows.push({ x: r.x + r.w, z: r.z + r.d / 2, wall: 'E', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath' });
-      if(r.z <= z0 + 0.01) windows.push({ x: r.x + r.w / 2, z: r.z, wall: 'S', w: 4.5, vent: false });
-      if(r.z + r.d >= z1 - 0.01) windows.push({ x: r.x + r.w / 2, z: r.z + r.d, wall: 'N', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath' });
+      if(r._eastStrip) doors.push({ x: r.x + r.w, z: r.z + Math.min(3, r.d / 2), wall: 'E', w: 3, fk });
+      else if(r.z > z0 + 0.02) doors.push({ x: r.x + r.w / 2, z: r.z, wall: 'S', w: 3, fk });
+      else doors.push({ x: r.x + r.w / 2, z: r.z + r.d, wall: 'N', w: 3, fk });
+      if(r.x <= x0 + 0.01) windows.push({ x: r.x, z: r.z + r.d / 2, wall: 'W', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath', fk });
+      if(r.x + r.w >= x1 - 0.01) windows.push({ x: r.x + r.w, z: r.z + r.d / 2, wall: 'E', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath', fk });
+      if(r.z <= z0 + 0.01) windows.push({ x: r.x + r.w / 2, z: r.z, wall: 'S', w: 4.5, vent: false, fk });
+      if(r.z + r.d >= z1 - 0.01) windows.push({ x: r.x + r.w / 2, z: r.z + r.d, wall: 'N', w: r.type === 'bath' ? 2 : 4.5, vent: r.type === 'bath', fk });
       delete r._eastStrip; delete r._rowFirst; delete r._cz;
     }
   }
