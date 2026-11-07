@@ -1163,6 +1163,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   }
   function buildBricks(){
     SBRICK.groups = {}; SBRICK.anim = null; SBRICK.lastStage = -1;
+    window.__ceremonySuppress = Date.now() + 1500; // a fresh build must not trigger the completion card
     if(!HOUSE) return;
     const byStage = {};
     HOUSE.traverse(m => {
@@ -1233,6 +1234,86 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     SBRICK.lastStage = n;
   };
   window.__SBRICK = SBRICK;
+  // ---------- B1 first-success pack (pattern sheet rules 1 + 5, 7 Nov 2026) ----------
+  // (a) One-tap sample house: the first screen offers a built house BEFORE any form —
+  // tap → preset fills → build → stage play runs → the family watches a house rise.
+  // (b) Completion ceremony: stepping INTO the final stage while staging shows a
+  // gentle card (3 ways onward + the concept line) — never on a fresh build, never
+  // unskippable, gone the moment the user steps back.
+  (function firstSuccess(){
+    const css = document.createElement('style');
+    css.textContent = ''
+      + '#heroBtn{display:block;width:100%;min-height:58px;margin:0 0 6px;background:linear-gradient(135deg,#0C3B2E,#14532d);color:#F7F3EA;border:2px solid #C7A252;border-radius:16px;font:800 17.5px system-ui;cursor:pointer;box-shadow:0 6px 18px rgba(12,59,46,.35)}'
+      + '#heroBtn:active{transform:scale(.985)}'
+      + '#heroSub{font-size:12.5px;color:#9db8d6;text-align:center;margin:0 0 10px;line-height:1.8}'
+      + '#cheerCard{position:fixed;left:50%;transform:translate(-50%,24px);bottom:86px;width:min(430px,93vw);background:linear-gradient(160deg,#10382c,#0C3B2E);border:1.5px solid #C7A252;border-radius:20px;padding:18px 18px 14px;z-index:96;color:#F7F3EA;box-shadow:0 18px 44px rgba(4,20,14,.5);opacity:0;pointer-events:none;transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);text-align:center}'
+      + '#cheerCard.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}'
+      + '#cheerCard h3{margin:0 0 4px;font-size:22px}'
+      + '#cheerCard .cpt{font-size:12.5px;color:#cfe3d8;line-height:1.9;margin:0 0 12px}'
+      + '#cheerCard .row{display:flex;gap:8px;flex-wrap:wrap}'
+      + '#cheerCard .row button{flex:1 1 30%;min-height:48px;border-radius:12px;border:1px solid #C7A252;background:#F7F3EA;color:#0C3B2E;font:700 14px system-ui;cursor:pointer;padding:6px 4px}'
+      + '#cheerCard .row button.main{background:#C7A252;color:#23190a}'
+      + '#cheerClose{position:absolute;top:8px;inset-inline-start:8px;width:34px;height:34px;border-radius:50%;border:1px solid rgba(247,243,234,.4);background:rgba(247,243,234,.12);color:#F7F3EA;font-size:15px;cursor:pointer}';
+    document.head.appendChild(css);
+    // hero button above the presets (the form's first thing)
+    const anchor = document.querySelector('[data-preset]');
+    if(anchor && anchor.parentElement){
+      const hb = document.createElement('button'); hb.id = 'heroBtn'; hb.type = 'button';
+      hb.textContent = '🏠 پہلے نمونہ گھر بنتا دیکھیں — ایک ٹیپ';
+      const sub = document.createElement('div'); sub.id = 'heroSub';
+      sub.textContent = 'کچھ لکھے بغیر — پہلے دیکھیں گھر کیسے بنتا ہے، پھر اپنے پلاٹ کی پیمائش ڈالیں';
+      anchor.parentElement.insertBefore(sub, anchor); anchor.parentElement.insertBefore(hb, sub);
+      hb.onclick = () => {
+        const p0 = document.querySelector('[data-preset="0"]'); if(p0) p0.click();
+        const nm = $('f_name'); if(nm && !nm.value) nm.value = 'نمونہ گھر';
+        window.__demoHero = true; window.__heroAt = Date.now();
+        const old = window.__STUDIO ? window.__STUDIO.PLAN : null;
+        $('buildBtn').click();
+        toast('نمونہ گھر بن رہا ہے…');
+        let tries = 0;
+        const iv = setInterval(() => {
+          tries++;
+          const ready = window.__STUDIO && window.__STUDIO.PLAN && window.__STUDIO.PLAN !== old;
+          if(ready){
+            clearInterval(iv);
+            const ms = $('mStages'); if(ms) ms.click();
+            setTimeout(() => { const pl = $('stPlay'); if(pl && pl.textContent.indexOf('⏸') < 0) pl.click(); }, 500);
+          } else if(tries > 50){ clearInterval(iv); }
+        }, 300);
+      };
+    }
+    // ceremony card
+    const card = document.createElement('div'); card.id = 'cheerCard';
+    card.innerHTML = '<button id="cheerClose" title="بند کریں">✕</button>'
+      + '<h3 id="cheerTitle">🎉 آپ کا گھر تیار ہے!</h3>'
+      + '<p class="cpt">یہ ابتدائی تصور ہے — تعمیر کے لیے منظور شدہ نقشہ نہیں۔ پیمائش اور ڈیزائن اپنے مستری و انجینئر سے موقع پر تصدیق کروائیں۔</p>'
+      + '<div class="row"><button id="cheerLook" class="main">👀 گھر قریب سے دیکھیں</button><button id="cheerChange">🎨 کچھ تبدیل کریں</button><button id="cheerShot">📸 تصویر محفوظ کریں</button></div>';
+    document.body.appendChild(card);
+    const hideCheer = () => card.classList.remove('show');
+    $('cheerClose').onclick = hideCheer;
+    $('cheerLook').onclick = () => { hideCheer(); const mm = $('mModel'); if(mm) mm.click(); toast('گھسیٹ کر گھمائیں — کسی کمرے پر کلک کریں تو اندر کی تفصیل کھلے گی'); };
+    $('cheerChange').onclick = () => { hideCheer(); const mb = $('menuBtn'); if(mb) mb.click(); };
+    $('cheerShot').onclick = () => { const ms = $('mShot'); if(ms) ms.click(); };
+    let cheerTimer = null;
+    const _asCheer = applyStage;
+    applyStage = function(n){
+      const before = state.stage;
+      _asCheer(n);
+      if(n < STAGES.length){ hideCheer(); if(cheerTimer){ clearTimeout(cheerTimer); cheerTimer = null; } return; }
+      if(state.staging && before === STAGES.length - 1 && n === STAGES.length){
+        if(cheerTimer) clearTimeout(cheerTimer);
+        cheerTimer = setTimeout(() => {
+          cheerTimer = null;
+          if(Date.now() < (window.__ceremonySuppress || 0)) return;
+          if(!state.staging) return;
+          $('cheerTitle').textContent = window.__demoHero ? '🎉 آپ کا نمونہ گھر تیار ہے!' : '🎉 آپ کا گھر تیار ہے!';
+          card.classList.add('show');
+        }, 700);
+      }
+    };
+    // a manual build is the user's own house, not the demo (hero clicks are timestamped)
+    $('buildBtn').addEventListener('click', () => { if(Date.now() - (window.__heroAt || 0) > 800) window.__demoHero = false; });
+  })();
   // ---------- menu ----------
   const drawer = $('menuDrawer');
   drawer.innerHTML = '<h4>🏗 تعمیر</h4><button id="mStages">🏗 بنتا ہوا گھر — مراحل</button>'
