@@ -649,7 +649,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   } catch (e) { /* environment is ambience; never a blocker */ }
   // === Furnished register v2 (same library as the Explorer; owner references 1 Nov 2026) ===
   function walnutTextureS(){
-    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = c.height = 512; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
     v.fillStyle = '#8a5a33'; v.fillRect(0,0,256,256);
     for(let i = 0; i < 70; i++){
       const x = Math.random()*256, w = 0.6 + Math.random()*3.2, dark = Math.random() > 0.35;
@@ -660,7 +660,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   }
   function carvedTextureS(){
-    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = c.height = 512; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
     v.fillStyle = '#6e4525'; v.fillRect(0,0,256,256);
     v.strokeStyle = 'rgba(38,20,8,0.55)'; v.lineWidth = 5; v.strokeRect(10,10,236,236);
     v.strokeStyle = 'rgba(226,176,120,0.28)'; v.lineWidth = 2; v.strokeRect(17,17,222,222);
@@ -675,27 +675,27 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   }
   function velvetTextureS(){
-    const c = document.createElement('canvas'); c.width = c.height = 128; const v = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
     v.fillStyle = '#e8e8e8'; v.fillRect(0,0,128,128);
     for(let i = 0; i < 2600; i++){ const g = 205 + Math.floor(Math.random()*50); v.fillStyle = 'rgba(' + g + ',' + g + ',' + g + ',0.5)'; v.fillRect(Math.random()*128, Math.random()*128, 1.6, 1.6); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3,3); return t;
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.repeat.set(3,3); return t; /* GAME MAX */
   }
   function subwayTextureS(){
-    const c = document.createElement('canvas'); c.width = 256; c.height = 128; const v = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
     v.fillStyle = '#cfd4d1'; v.fillRect(0,0,256,128);
     v.fillStyle = '#f4f2ec';
     const bh = 30, bw = 62;
     for(let row = 0; row < 4; row++){ const off = (row % 2) * (bw / 2);
       for(let cx2 = -1; cx2 < 5; cx2++){ v.fillRect(off + cx2 * (bw + 3) + 1.5, row * (bh + 3) + 1.5, bw, bh); } }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 1); return t;
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.repeat.set(3, 1); return t; /* GAME MAX */
   }
   function marbleTextureS(){
-    const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = c.height = 512; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
     v.fillStyle = '#f2f1ec'; v.fillRect(0,0,256,256);
     for(let i = 0; i < 26; i++){ const g = 225 + Math.floor(Math.random()*22); v.fillStyle = 'rgba(' + g + ',' + g + ',' + (g - 4) + ',0.35)'; v.beginPath(); v.ellipse(Math.random()*256, Math.random()*256, 22 + Math.random()*46, 12 + Math.random()*26, Math.random()*3, 0, Math.PI*2); v.fill(); }
     v.strokeStyle = 'rgba(122,130,140,0.5)';
     for(let i = 0; i < 7; i++){ v.lineWidth = 0.8 + Math.random()*1.4; v.beginPath(); let x = Math.random()*256, y = 0; v.moveTo(x, y); while(y < 256){ x += (Math.random()*36 - 18); y += 22 + Math.random()*26; v.lineTo(x, y); } v.stroke(); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); return t;
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.repeat.set(2, 2); return t; /* GAME MAX */
   }
   const VELTEXS = velvetTextureS();
   MAT.marble = M(0xffffff, { map: marbleTextureS() });
@@ -709,7 +709,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   function rugMaterialS(col){
     const key = col.toString(16);
     if(_rugCacheS[key]) return _rugCacheS[key];
-    const c = document.createElement('canvas'); c.width = 256; c.height = 320; const v = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = 512; c.height = 640; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
     v.fillStyle = '#' + col.toString(16).padStart(6, '0'); v.fillRect(0,0,256,320);
     v.strokeStyle = 'rgba(232,221,196,0.9)'; v.lineWidth = 10; v.strokeRect(14,14,228,292);
     v.strokeStyle = 'rgba(232,221,196,0.55)'; v.lineWidth = 3; v.strokeRect(30,30,196,260);
@@ -1271,8 +1271,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const SBRICK_LEN = 0.75; /* MAX BUILD (owner order 2026-11-08): full brick density on every device */
   SBRICK.len = SBRICK_LEN;
   function sbrickTexture(){
-    const c = document.createElement('canvas'); c.width = c.height = 128;
-    const x = c.getContext('2d');
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d'); x.scale(2, 2); /* GAME MAX hi-res */
     x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128);
     const gr = x.createLinearGradient(0, 0, 0, 128);
     gr.addColorStop(0, 'rgba(0,0,0,0.10)'); gr.addColorStop(0.5, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.14)');
