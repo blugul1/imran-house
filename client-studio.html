@@ -210,6 +210,17 @@ function generatePlan(spec){
   // small plots; the validator + QA gate below remain the safety net.
   const variant = spec.variant || 'A';
   if(variant === 'B'){ rB = Math.min(rB + 2.5, D * 0.44); rA = Math.max(rA - 1, 11); }
+  // Shallow plots: the row floors (12 + 13) plus a real back row (9) can
+  // exceed the available depth and push the back row OUTSIDE the envelope —
+  // Demo-3 (25x40, D=21) computed its back row at -4 ft and placed kitchen/
+  // bath/store beyond the plot (caught by the fixed-dataset run, 7 Nov 2026).
+  // Squeeze the two front rows proportionally so the back row keeps 9 ft;
+  // the D<34 / D<20 warnings already tell the client the program shrank.
+  if(rA + rB + 9 > D){
+    const avail = Math.max(6, D - 9);
+    const k = avail / (rA + rB);
+    rA = Math.max(7, rA * k); rB = Math.max(7, avail - rA);
+  }
   // entry + stair hall (front of spine) — its depth may never exceed the
   // front row's depth, or it would collide with the middle row's wet slot
   // (variant B shrinks the front row; this clamp is a no-op for A and C).
@@ -268,9 +279,10 @@ function generatePlan(spec){
     let bedB2 = null, bathB = null, storeB = null;
     if(N.baths >= 2 || top){
       const bw = Math.min(7, colW * 0.45);
-      bathB = room(fk, 'bath', 'باتھ', sx1, zA1, bw, 9, 'E');
+      const bd = Math.min(9, rB); // on squeezed shallow rows the bath slot takes the row's depth, never more
+      bathB = room(fk, 'bath', 'باتھ', sx1, zA1, bw, bd, 'E');
       bedB2 = room(fk, 'bed', 'بیڈ روم 2', sx1 + bw, zA1, colW - bw, rB, 'E');
-      storeB = room(fk, 'store', 'اسٹور', sx1, zA1 + 9, bw, rB - 9, 'E');
+      if(rB - bd >= 2.5) storeB = room(fk, 'store', 'اسٹور', sx1, zA1 + bd, bw, rB - bd, 'E');
     } else {
       bedB2 = room(fk, 'bed', 'بیڈ روم 2', sx1, zA1, colW, rB, 'E');
     }
