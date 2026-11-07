@@ -2677,7 +2677,11 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#questDone .in{background:#FFFBF0;border:1.5px solid #C7A252;border-radius:18px;padding:26px 24px;max-width:320px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.3);color:#2b2b26}' +
     '#questDone h3{margin:0 0 8px;font-size:21px;color:#20513a}' +
     '#questDone p{margin:0 0 14px;font-size:15px;line-height:1.6;color:#2b2b26}' +
-    '#questDone button{min-height:48px;padding:10px 22px;border:0;border-radius:12px;background:#2e7d4f;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}';
+    '#questDone button{min-height:48px;padding:10px 22px;border:0;border-radius:12px;background:#2e7d4f;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}' +
+    '#trayBar{position:fixed;left:50%;transform:translateX(-50%);bottom:118px;z-index:64;display:none;gap:6px;max-width:96vw;overflow-x:auto;padding:6px;background:rgba(255,251,240,.97);border:1.5px solid #C7A252;border-radius:14px;box-shadow:0 6px 18px rgba(60,45,10,.22)}' +
+    '.trayBtn{flex:0 0 auto;min-height:48px;min-width:56px;padding:4px 8px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:12.5px;color:#2b2b26;cursor:pointer;line-height:1.3}' +
+    '.trayBtn .ic{display:block;font-size:19px;line-height:1.15}' +
+    '.trayBtn.on{background:#2e7d4f;border-color:#2e7d4f;color:#fff}';
   document.head.appendChild(css);
 
   var MISSIONS = [
@@ -2708,9 +2712,27 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     b.style.display = (b.style.display === 'none') ? '' : 'none';
   });
 
+  /* --- tiny WebAudio feedback (no assets; created lazily on gesture) --- */
+  var AC = null;
+  function beep(f0, f1, dur, type, vol) {
+    try {
+      if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === 'suspended') AC.resume();
+      var o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+      o.type = type; o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.03);
+    } catch (e) { /* sound is a garnish, never a blocker */ }
+  }
+  function sndTap() { beep(620, 420, 0.05, 'triangle', 0.07); }
+  function sndDone() { beep(190, 70, 0.11, 'sine', 0.15); }
+  function sndWin() { sndDone(); setTimeout(function () { beep(520, 780, 0.15, 'triangle', 0.09); }, 140); }
+
   function complete(id) {
     if (done[id]) return;
     done[id] = true;
+    sndDone();
     var row = document.getElementById('q_' + id);
     if (row) { row.classList.add('done'); row.querySelector('.box').textContent = '✓'; }
     var n = Object.keys(done).length;
@@ -2723,7 +2745,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         var cheer = document.getElementById('cheerCard');
         var cheerOpen = cheer && cheer.classList.contains('show');
         if (cheerOpen && tries < 12) { tries++; setTimeout(showWhenClear, 800); return; }
-        doneEl.style.display = 'flex';
+        doneEl.style.display = 'flex'; sndWin();
       };
       setTimeout(showWhenClear, REDUCED ? 60 : 650);
     }
@@ -2757,7 +2779,65 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
   }, 600);
 
+  /* ============ BUILDING TRAY (Minecraft hotbar, our dialect) ============
+     One button per construction stage: tap = jump straight to that part of
+     the house; the part you are standing on stays lit. Built once the plan
+     exists; driven by the same observed stage label as the missions. */
+  var tray = document.createElement('div');
+  tray.id = 'trayBar';
+  document.body.appendChild(tray);
+  var trayBuilt = false, trayActive = -1;
+  var ICONS = [
+    [/بنیاد|کھدائی/, '🪨'], [/دیوار|چنائی|اینٹ/, '🧱'], [/کالم|بیم|چھت.*سل|لینٹر/, '🏗️'],
+    [/درواز/, '🚪'], [/کھڑک|ونڈو/, '🪟'], [/چھت/, '🏠'], [/پلستر|رنگ|پینٹ/, '🎨'],
+    [/فرش|ٹائل|ماربل/, '🔲'], [/بجلی/, '💡'], [/پلمب|پانی|باتھ|کچن/, '🚿'],
+    [/فرنیچر|سجاوٹ/, '🛋️'], [/مکمل|آخری|تیار/, '✅']
+  ];
+  function iconFor(name) {
+    for (var i = 0; i < ICONS.length; i++) if (ICONS[i][0].test(name)) return ICONS[i][1];
+    return '🔹';
+  }
+  function buildTray(names) {
+    tray.innerHTML = '';
+    names.forEach(function (nm, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'trayBtn'; b.setAttribute('data-i', i);
+      b.innerHTML = '<span class="ic">' + iconFor(nm) + '</span>' + nm;
+      b.addEventListener('click', function () {
+        sndTap();
+        var S = window.__STUDIO;
+        if (S && typeof S.applyStage === 'function') S.applyStage(i + 1); /* applyStage is 1-based (matches the «مرحلہ n» label) */
+      });
+      tray.appendChild(b);
+    });
+    trayBuilt = true;
+    tray.style.display = 'flex';
+  }
+  setInterval(function () {
+    var S = window.__STUDIO;
+    if (!S || !S.PLAN) return;
+    if (!trayBuilt && typeof S.STAGES === 'function') {
+      var names = S.STAGES();
+      if (names && names.length) buildTray(names);
+    }
+    if (trayBuilt) {
+      var lbl = document.getElementById('stLabel');
+      var mm = lbl && (lbl.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
+      if (mm) {
+        var cur = parseInt(mm[1], 10) - 1;
+        if (cur !== trayActive) {
+          trayActive = cur;
+          var btns = tray.querySelectorAll('.trayBtn');
+          btns.forEach(function (b, bi) { b.classList.toggle('on', bi === cur); });
+          var on = tray.querySelector('.trayBtn.on');
+          if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      }
+    }
+  }, 500);
+
   window.__QUEST = { done: function () { return Object.assign({}, done); }, count: function () { return Object.keys(done).length; } };
+  window.__TRAY = { built: function () { return trayBuilt; }, active: function () { return trayActive; } };
 })();
 
 </script>
