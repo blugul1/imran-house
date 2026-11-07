@@ -597,7 +597,13 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const ENVG = new THREE.Group(); scene.add(ENVG);
   try {
     scene.fog = new THREE.Fog(0xdcebf2, 215, 580);
-    const gnd = new THREE.Mesh(new THREE.CircleGeometry(620, 44), M(0x86a065, { roughness: 1 })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -0.07; gnd.receiveShadow = true; ENVG.add(gnd);
+    function speck(base, dots, n) { const c = document.createElement('canvas'); c.width = c.height = 128; const v = c.getContext('2d'); v.fillStyle = base; v.fillRect(0, 0, 128, 128); for (let i = 0; i < n; i++) { v.fillStyle = dots[i % dots.length]; v.beginPath(); v.arc(Math.random() * 128, Math.random() * 128, 0.8 + Math.random() * 2.1, 0, 7); v.fill(); } const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; }
+    const lawnTex = speck('#7fa05f', ['#74955a', '#8cab6c', '#6d8a52', '#86a868'], 1000); lawnTex.repeat.set(110, 110);
+    const gravelTex = speck('#c9c1ad', ['#b8ae99', '#d6cfbc', '#a99f88'], 750); gravelTex.repeat.set(0.055, 0.055); window.__GRAVEL = gravelTex;
+    function skyTex(top, mid, bot) { const c = document.createElement('canvas'); c.width = 4; c.height = 256; const v = c.getContext('2d'); const g = v.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(1, bot); v.fillStyle = g; v.fillRect(0, 0, 4, 256); return new THREE.CanvasTexture(c); }
+    const skyDay = skyTex('#5f9bd6', '#a8c8e4', '#e8f1f4'), skyDusk = skyTex('#101c3a', '#33477a', '#141f38');
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(880, 20, 12), new THREE.MeshBasicMaterial({ map: skyDay, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -10; ENVG.add(sky); window.__SKY = sky;
+    const gnd = new THREE.Mesh(new THREE.CircleGeometry(620, 44), M(0xffffff, { roughness: 1, map: lawnTex })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -0.07; gnd.receiveShadow = true; ENVG.add(gnd);
     const rdG = new THREE.Group(); ENVG.add(rdG);
     const fpath = new THREE.Mesh(new THREE.BoxGeometry(760, 0.07, 4.5), M(0xb7ae9c, { roughness: 1 })); fpath.position.set(0, -0.02, -3.6); fpath.receiveShadow = true; rdG.add(fpath);
     const road = new THREE.Mesh(new THREE.BoxGeometry(760, 0.06, 18), M(0x504d48, { roughness: 1 })); road.position.set(0, -0.03, -15.5); road.receiveShadow = true; rdG.add(road);
@@ -619,6 +625,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         if (S && S.PLAN && S.PLAN.meta) rdG.position.z = -(S.PLAN.meta.depth / 2);
         ENVG.visible = !(typeof state !== 'undefined' && state && state.floor === 'basement');
         if (scene.fog && typeof state !== 'undefined' && state) scene.fog.color.set(state.dusk ? 0x141f38 : 0xdcebf2);
+        if (window.__SKY && typeof state !== 'undefined' && state) { const want = state.dusk ? skyDusk : skyDay; if (__SKY.material.map !== want) { __SKY.material.map = want; __SKY.material.needsUpdate = true; } }
       } catch (e) {}
     }, 700);
   } catch (e) { /* environment is ambience; never a blocker */ }
@@ -822,7 +829,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       const shp = new THREE.Shape(); shp.moveTo(poly[0].x, -poly[0].z);
       for(let i = 1; i < poly.length; i++) shp.lineTo(poly[i].x, -poly[i].z);
       shp.closePath();
-      const pg = new THREE.Mesh(new THREE.ShapeGeometry(shp), M(0xcac2ae)); pg.receiveShadow = true; /* GAME MAX: plot plate receives shadows */
+      const pg = new THREE.Mesh(new THREE.ShapeGeometry(shp), M(0xcac2ae)); pg.receiveShadow = true; if (window.__GRAVEL) { pg.material.map = window.__GRAVEL; pg.material.needsUpdate = true; } /* GAME MAX: plot plate receives shadows + gravel grain */
       pg.rotation.x = -Math.PI / 2; pg.position.y = 0.05; pg.userData.st = 1; HOUSE.add(pg);
     }
     function bwall(p, q, gapC, gapW){
