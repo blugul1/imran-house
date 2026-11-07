@@ -619,6 +619,24 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       const h = new THREE.Mesh(new THREE.ConeGeometry(hr, hh, 7), hillM); h.position.set(hx, hh / 2 - 2, hz); ENVG.add(h);
     }
     window.__ENVG = ENVG;
+    /* FPS shadow guard: if a real device cannot hold ~24fps with a plan on screen, sun shadows switch off once (no oscillation). Set window.__NOSHADOWGUARD before load to disable (visual QA). */
+    if (!window.__NOSHADOWGUARD) {
+      let fAcc = 0, fN = 0, fLast = performance.now(), fBad = 0, fOff = false;
+      window.__PERF = { fps: 0, shadowsOff: false };
+      const fLoop = function (t) {
+        if (fOff) return;
+        const dt = t - fLast; fLast = t;
+        if (dt > 0 && dt < 1000) { fAcc += dt; fN++; }
+        if (fN >= 120) {
+          const fps = 1000 / (fAcc / fN); fAcc = 0; fN = 0;
+          window.__PERF.fps = Math.round(fps * 10) / 10;
+          if (fps < 24 && window.__STUDIO && window.__STUDIO.PLAN) { fBad++; if (fBad >= 2) { try { dl.castShadow = false; } catch (e) {} fOff = true; window.__PERF.shadowsOff = true; } }
+          else fBad = 0;
+        }
+        requestAnimationFrame(fLoop);
+      };
+      requestAnimationFrame(fLoop);
+    }
     setInterval(function () {
       try {
         const S = window.__STUDIO;
