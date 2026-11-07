@@ -670,6 +670,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         if (fN >= 120) {
           const fps = 1000 / (fAcc / fN); fAcc = 0; fN = 0;
           window.__PERF.fps = Math.round(fps * 10) / 10;
+          try { window.__PERF.calls = renderer.info.render.calls; window.__PERF.tris = renderer.info.render.triangles; } catch (e) {}
           if (fps < 24 && window.__STUDIO && window.__STUDIO.PLAN) { fBad++; if (fBad >= 2) { try { dl.castShadow = false; } catch (e) {} fOff = true; window.__PERF.shadowsOff = true; } }
           else fBad = 0;
         }
