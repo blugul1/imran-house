@@ -1317,6 +1317,161 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     // a manual build is the user's own house, not the demo (hero clicks are timestamped)
     $('buildBtn').addEventListener('click', () => { if(Date.now() - (window.__heroAt || 0) > 800) window.__demoHero = false; });
   })();
+  // ---------- B3 kid-simple wizard (pattern sheet rules 2+3+6, 7 Nov 2026) ----------
+  // One decision per screen, big visual cards, steppers with a live plot sketch,
+  // back always available, close anytime. It writes into the SAME form fields and
+  // builds with the SAME button — one model, a friendlier skin (rule 10). The full
+  // form stays below as the detailed path.
+  (function wizard(){
+    const css = document.createElement('style');
+    css.textContent = ''
+      + '#wizBtn{display:block;width:100%;min-height:54px;margin:0 0 4px;background:#F7F3EA;color:#0C3B2E;border:2px solid #C7A252;border-radius:16px;font:800 16.5px system-ui;cursor:pointer}'
+      + '#wizBtn:active{transform:scale(.985)}'
+      + '#wiz{position:fixed;inset:0;background:rgba(6,24,18,.72);z-index:120;display:none;align-items:center;justify-content:center;padding:12px}'
+      + '#wiz.open{display:flex}'
+      + '#wizCard{background:#0e2c22;border:1.5px solid #C7A252;border-radius:22px;width:min(480px,96vw);max-height:92vh;overflow-y:auto;padding:20px 18px 16px;color:#F7F3EA;position:relative;box-shadow:0 22px 60px rgba(0,0,0,.5)}'
+      + '#wizX{position:absolute;top:10px;inset-inline-start:10px;width:38px;height:38px;border-radius:50%;border:1px solid rgba(247,243,234,.4);background:rgba(247,243,234,.1);color:#F7F3EA;font-size:16px;cursor:pointer;z-index:2}'
+      + '#wizDots{text-align:center;letter-spacing:5px;color:#C7A252;font-size:13px;margin-bottom:6px}'
+      + '#wizQ{font-size:21px;font-weight:800;text-align:center;margin:2px 0 14px;line-height:1.7}'
+      + '.wchoices{display:flex;gap:10px}'
+      + '.wchoice{flex:1;background:#123528;border:2px solid rgba(199,162,82,.45);border-radius:16px;padding:14px 8px 10px;cursor:pointer;text-align:center;color:#F7F3EA;font:700 15.5px system-ui;min-height:104px}'
+      + '.wchoice.on{border-color:#C7A252;background:#17503a}'
+      + '.wchoice svg{display:block;margin:0 auto 8px}'
+      + '.wchoice small{display:block;font-weight:400;font-size:12px;color:#bcd6c8;margin-top:4px;line-height:1.7}'
+      + '.wstep{display:flex;align-items:center;justify-content:center;gap:14px;margin:8px 0 4px}'
+      + '.wstep button{width:62px;height:62px;border-radius:50%;border:2px solid #C7A252;background:#17503a;color:#F7F3EA;font-size:30px;font-weight:800;cursor:pointer;line-height:1}'
+      + '.wstep .val{font-size:40px;font-weight:800;min-width:118px;text-align:center}'
+      + '.wstep .val small{font-size:15px;font-weight:400;color:#bcd6c8}'
+      + '#wizPrev{text-align:center;color:#9db8d6;font-size:13px;line-height:1.8;min-height:20px}'
+      + '.wtogs{display:grid;grid-template-columns:1fr 1fr;gap:10px}'
+      + '.wtog{background:#123528;border:2px solid rgba(199,162,82,.45);border-radius:14px;padding:13px 8px;cursor:pointer;text-align:center;color:#F7F3EA;font:700 15px system-ui;min-height:64px}'
+      + '.wtog.on{border-color:#C7A252;background:#17503a}'
+      + '.wtog .st{display:block;font-size:12px;font-weight:400;color:#bcd6c8;margin-top:3px}'
+      + '#wizFoot{display:flex;gap:10px;margin-top:16px}'
+      + '#wizFoot button{flex:1;min-height:54px;border-radius:14px;font:800 16.5px system-ui;cursor:pointer}'
+      + '#wizBack{background:transparent;border:1.5px solid rgba(247,243,234,.45);color:#F7F3EA}'
+      + '#wizNext{background:#C7A252;border:none;color:#23190a}'
+      + '#wizSum{background:#123528;border-radius:14px;padding:12px 14px;line-height:2.05;font-size:15px}'
+      + '#wizBuild{display:block;width:100%;min-height:60px;margin-top:14px;background:linear-gradient(135deg,#0C3B2E,#14532d);color:#F7F3EA;border:2px solid #C7A252;border-radius:16px;font:800 18px system-ui;cursor:pointer}';
+    document.head.appendChild(css);
+    const W = { shape: 'rect', front: 40, back: 40, left: 75, right: 75, floors: 2, beds: 3, baths: 2, drawing: true, porch: true, study: false, basement: false };
+    const ov = document.createElement('div'); ov.id = 'wiz';
+    ov.innerHTML = '<div id="wizCard"><button id="wizX">✕</button><div id="wizDots"></div><div id="wizQ"></div><div id="wizBody"></div><div id="wizFoot"><button id="wizBack">⟨ پیچھے</button><button id="wizNext">آگے ⟩</button></div></div>';
+    document.body.appendChild(ov);
+    const body = ov.querySelector('#wizBody'), qEl = ov.querySelector('#wizQ'), dotsEl = ov.querySelector('#wizDots');
+    const nextBtn = ov.querySelector('#wizNext'), backBtn = ov.querySelector('#wizBack');
+    function steps(){
+      const s = ['shape', 'front'];
+      if(W.shape === 'trap') s.push('back', 'left', 'right'); else s.push('depth');
+      s.push('floors', 'beds', 'baths', 'extras', 'done');
+      return s;
+    }
+    let cur = 0;
+    function applyW(){
+      $('f_front').value = W.front; $('f_back').value = W.shape === 'trap' ? W.back : W.front;
+      $('f_left').value = W.shape === 'trap' ? W.left : W.depth; $('f_right').value = W.shape === 'trap' ? W.right : W.depth;
+      $('f_floors').value = String(W.floors); $('f_beds').value = String(W.beds); $('f_baths').value = String(W.baths);
+      $('f_drawing').checked = W.drawing; $('f_porch').checked = W.porch; $('f_study').checked = W.study; $('f_basement').checked = W.basement;
+    }
+    function plotSVG(){
+      const fw = W.front, bw = W.shape === 'trap' ? W.back : W.front, ld = W.shape === 'trap' ? (W.left + W.right) / 2 : W.depth;
+      const sc = Math.min(230 / fw, 110 / ld), wpx = fw * sc, hpx = ld * sc, bpx = bw * sc;
+      const x0 = (260 - wpx) / 2, x1 = (260 - bpx) / 2, y0 = 8;
+      const sqft = ((fw + bw) / 2) * ld, marla = sqft / 272.25;
+      return '<svg width="260" height="' + (hpx + 44) + '" viewBox="0 0 260 ' + (hpx + 44) + '">'
+        + '<polygon points="' + x1 + ',' + y0 + ' ' + (x1 + bpx) + ',' + y0 + ' ' + (x0 + wpx) + ',' + (y0 + hpx) + ' ' + x0 + ',' + (y0 + hpx) + '" fill="rgba(199,162,82,.18)" stroke="#C7A252" stroke-width="2.5"/>'
+        + '<text x="130" y="' + (y0 + hpx + 24) + '" fill="#F7F3EA" font-size="13" text-anchor="middle">سامنے: ' + fw + ' فٹ · سڑک اس طرف</text></svg>'
+        + '<div id="wizPrev">رقبہ تقریباً ' + Math.round(sqft).toLocaleString('en-US') + ' مربع فٹ ≈ ' + (Math.round(marla * 10) / 10) + ' مرلہ (خاکہ اندازے کے لیے ہے)</div>';
+    }
+    function stepper(label, key, min, max, unit, showPlot){
+      qEl.textContent = label;
+      body.innerHTML = '<div class="wstep"><button id="wsMinus">−</button><div class="val">' + W[key] + ' <small>' + unit + '</small></div><button id="wsPlus">+</button></div>' + (showPlot ? plotSVG() : '');
+      const upd = () => { body.querySelector('.val').innerHTML = W[key] + ' <small>' + unit + '</small>'; if(showPlot){ const pv = body.querySelector('svg'); if(pv) pv.outerHTML = plotSVG(); } applyW(); };
+      body.querySelector('#wsMinus').onclick = () => { W[key] = Math.max(min, W[key] - 1); upd(); };
+      body.querySelector('#wsPlus').onclick = () => { W[key] = Math.min(max, W[key] + 1); upd(); };
+    }
+    function render(){
+      const s = steps(), k = s[cur];
+      dotsEl.textContent = s.map((_, i) => i === cur ? '●' : '○').join('');
+      backBtn.style.visibility = cur === 0 ? 'hidden' : 'visible';
+      nextBtn.style.display = ''; ov.querySelector('#wizFoot').style.display = 'flex';
+      if(k === 'shape'){
+        qEl.textContent = 'آپ کے پلاٹ کی شکل کیسی ہے؟';
+        body.innerHTML = '<div class="wchoices">'
+          + '<button class="wchoice' + (W.shape === 'rect' ? ' on' : '') + '" data-sh="rect"><svg width="74" height="52"><rect x="7" y="7" width="60" height="38" fill="rgba(199,162,82,.18)" stroke="#C7A252" stroke-width="2.5"/></svg>مستطیل<small>سامنے پیچھے برابر، دونوں اطراف برابر</small></button>'
+          + '<button class="wchoice' + (W.shape === 'trap' ? ' on' : '') + '" data-sh="trap"><svg width="74" height="52"><polygon points="20,7 58,7 68,45 8,45" fill="rgba(199,162,82,.18)" stroke="#C7A252" stroke-width="2.5"/></svg>ترچھا / ٹیڑھا<small>کوئی طرف چھوٹی بڑی ہو تو یہ چنیں</small></button></div>';
+        nextBtn.style.display = 'none';
+        body.querySelectorAll('[data-sh]').forEach(b => b.onclick = () => { W.shape = b.dataset.sh; applyW(); cur++; render(); });
+      } else if(k === 'front') stepper('پلاٹ سامنے سے کتنا چوڑا ہے؟ (سڑک والی طرف)', 'front', 15, 200, 'فٹ', true);
+      else if(k === 'back') stepper('پیچھے سے کتنا چوڑا ہے؟', 'back', 15, 200, 'فٹ', true);
+      else if(k === 'left') stepper('بائیں طرف کی لمبائی کتنی ہے؟', 'left', 20, 300, 'فٹ', true);
+      else if(k === 'right') stepper('دائیں طرف کی لمبائی کتنی ہے؟', 'right', 20, 300, 'فٹ', true);
+      else if(k === 'depth') stepper('پلاٹ کتنا لمبا ہے؟ (گہرائی)', 'depth', 20, 300, 'فٹ', true);
+      else if(k === 'floors'){
+        qEl.textContent = 'کتنی منزلیں بنانی ہیں؟';
+        body.innerHTML = '<div class="wchoices">'
+          + '<button class="wchoice' + (W.floors === 1 ? ' on' : '') + '" data-fl="1"><svg width="74" height="52"><rect x="14" y="24" width="46" height="22" fill="rgba(199,162,82,.18)" stroke="#C7A252" stroke-width="2.5"/></svg>ایک منزل</button>'
+          + '<button class="wchoice' + (W.floors === 2 ? ' on' : '') + '" data-fl="2"><svg width="74" height="52"><rect x="14" y="6" width="46" height="18" fill="rgba(199,162,82,.18)" stroke="#C7A252" stroke-width="2.5"/><rect x="14" y="26" width="46" height="18" fill="rgba(199,162,82,.18)" stroke="#C7A252" stroke-width="2.5"/></svg>دو منزلیں</button></div>';
+        nextBtn.style.display = 'none';
+        body.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => { W.floors = +b.dataset.fl; applyW(); cur++; render(); });
+      } else if(k === 'beds') stepper('کتنے بیڈ روم چاہییں؟', 'beds', 1, 6, 'بیڈ روم');
+      else if(k === 'baths') stepper('کتنے باتھ روم چاہییں؟', 'baths', 1, 4, 'باتھ');
+      else if(k === 'extras'){
+        qEl.textContent = 'یہ سہولتیں بھی چاہییں؟ (جو چاہیے، چھوئیں)';
+        const tg = (key, label) => '<button class="wtog' + (W[key] ? ' on' : '') + '" data-tg="' + key + '">' + label + '<span class="st">' + (W[key] ? '✓ شامل ہے' : 'شامل نہیں') + '</span></button>';
+        body.innerHTML = '<div class="wtogs">' + tg('drawing', '🛋 ڈرائنگ روم') + tg('porch', '🚗 کار پورچ') + tg('study', '📚 مطالعے کا کمرہ') + tg('basement', '🏠 تہہ خانہ') + '</div>'
+          + '<div id="wizPrev" style="margin-top:10px">خاندان کی تفصیل (بڑے، بچے، بزرگ) اور بجٹ نیچے والے فارم سے بعد میں بھی بدل سکتے ہیں۔</div>';
+        body.querySelectorAll('[data-tg]').forEach(b => b.onclick = () => { const key = b.dataset.tg; W[key] = !W[key]; applyW(); render(); });
+      } else if(k === 'done'){
+        qEl.textContent = 'سب تیار ہے — جائزہ لے لیں';
+        const fw = W.front, bw = W.shape === 'trap' ? W.back : W.front, ld = W.shape === 'trap' ? (W.left + W.right) / 2 : W.depth;
+        const sqft = ((fw + bw) / 2) * ld;
+        body.innerHTML = '<div id="wizSum">'
+          + '▸ پلاٹ: ' + (W.shape === 'trap' ? 'ترچھا — سامنے ' + W.front + '، پیچھے ' + W.back + '، بائیں ' + W.left + '، دائیں ' + W.right + ' فٹ' : 'مستطیل — ' + W.front + ' × ' + W.depth + ' فٹ') + '<br>'
+          + '▸ رقبہ تقریباً ' + Math.round(sqft).toLocaleString('en-US') + ' مربع فٹ ≈ ' + (Math.round(sqft / 272.25 * 10) / 10) + ' مرلہ<br>'
+          + '▸ ' + (W.floors === 2 ? 'دو منزلیں' : 'ایک منزل') + ' · ' + W.beds + ' بیڈ روم · ' + W.baths + ' باتھ<br>'
+          + '▸ ' + [W.drawing ? 'ڈرائنگ روم ✓' : null, W.porch ? 'پورچ ✓' : null, W.study ? 'مطالعہ ✓' : null, W.basement ? 'تہہ خانہ ✓' : null].filter(Boolean).join(' · ') + '</div>'
+          + '<button id="wizBuild">🏠 گھر بنائیں — بنتا ہوا دیکھیں</button>';
+        nextBtn.style.display = 'none'; // Back stays available — forgiveness rule
+        body.querySelector('#wizBuild').onclick = () => {
+          applyW(); close();
+          const old = window.__STUDIO ? window.__STUDIO.PLAN : null;
+          $('buildBtn').click();
+          let tries = 0;
+          const iv = setInterval(() => {
+            tries++;
+            if(window.__STUDIO && window.__STUDIO.PLAN && window.__STUDIO.PLAN !== old){
+              clearInterval(iv);
+              const ms = $('mStages'); if(ms) ms.click();
+              setTimeout(() => { const pl = $('stPlay'); if(pl && pl.textContent.indexOf('⏸') < 0) pl.click(); }, 500);
+            } else if(tries > 50) clearInterval(iv);
+          }, 300);
+        };
+      }
+    }
+    function open(){
+      W.front = parseFloat($('f_front').value) || 40; W.back = parseFloat($('f_back').value) || W.front;
+      W.left = parseFloat($('f_left').value) || 75; W.right = parseFloat($('f_right').value) || W.left;
+      W.depth = W.left;
+      W.shape = (W.back !== W.front || W.left !== W.right) ? 'trap' : 'rect';
+      W.floors = +($('f_floors').value || 2); W.beds = +($('f_beds').value || 3); W.baths = +($('f_baths').value || 2);
+      W.drawing = $('f_drawing').checked; W.porch = $('f_porch').checked; W.study = $('f_study').checked; W.basement = $('f_basement').checked;
+      cur = 0; ov.classList.add('open'); render();
+    }
+    function close(){ ov.classList.remove('open'); }
+    ov.querySelector('#wizX').onclick = close;
+    nextBtn.onclick = () => { const s = steps(); if(cur < s.length - 1){ cur++; render(); } };
+    backBtn.onclick = () => { if(cur > 0){ cur--; render(); } };
+    const anchor = document.querySelector('[data-preset]');
+    if(anchor && anchor.parentElement){
+      const wb = document.createElement('button'); wb.id = 'wizBtn'; wb.type = 'button';
+      wb.textContent = '🧒 آسان طریقہ — قدم بہ قدم بنائیں';
+      const sub = document.getElementById('heroSub');
+      if(sub && sub.nextSibling) anchor.parentElement.insertBefore(wb, sub.nextSibling); else anchor.parentElement.insertBefore(wb, anchor);
+      wb.onclick = open;
+    }
+    window.__WIZ = { open: open, state: W };
+  })();
   // ---------- menu ----------
   const drawer = $('menuDrawer');
   drawer.innerHTML = '<h4>🏗 تعمیر</h4><button id="mStages">🏗 بنتا ہوا گھر — مراحل</button>'
