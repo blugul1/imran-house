@@ -3870,5 +3870,109 @@ stageMode = function(on){
 
 buildBricks();
 window.__BRICKS = BRICKSYS;
+
+
+// ================= Explorer v22 — Quiet chrome: easy exploring, minimum buttons =================
+// Owner's order, 7 Nov 2026: «ایکسپلورنگ آسان ہو — موبائل پر بھی اور لیپ ٹاپ پر بھی — بٹنوں کا شور کم سے کم»
+// Learnings applied here (from the Studio cleanup + premium doctrine):
+//  - the model is the screen; every panel is ON DEMAND (Studio drawer rule)
+//  - the welcome/routes card no longer opens by itself — it lives in the menu
+//  - phone first: on a small screen the minimap starts folded, panels go full-width
+// Nothing is removed: every feature stays, one tap further away at most.
+
+(function quietChrome(){
+  const css = document.createElement('style');
+  css.textContent = [
+    // a small close chip that floats on the info card whenever it is open
+    '#infoClose{position:fixed;z-index:90;width:34px;height:34px;border-radius:50%;background:rgba(10,26,59,.92);color:#fff;border:1px solid #3dab94;font-size:15px;line-height:1;display:none;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.35)}',
+    // minimap fold: a quiet map chip, bottom-left
+    '#mapToggle{position:absolute;left:10px;bottom:224px;z-index:26;background:rgba(10,26,59,.92);color:#eef2ea;border:1px solid #3dab94;border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;box-shadow:0 4px 12px rgba(10,20,40,.3)}',
+    'body.mapOff #mapwrap{display:none !important}',
+    'body.mapOff #mapToggle{bottom:10px}',
+    'body.stageon #mapToggle, body.stageon #compass{display:none !important}',
+    // tighter top bar on phones: WRAPS into two slim rows — nothing hides off-screen
+    // (part11 had made it one swipeable row: floor/help buttons sat off-screen, owner
+    //  could not find them. AIDE/Studio rule: primary switches stay visible, no scroll.)
+    '@media (max-width:820px){',
+    '  .bar{flex-wrap:wrap !important;overflow-x:visible !important;overflow-y:visible !important;gap:5px;padding:6px 8px}',
+    '  .bar .cap{display:none}',
+    '  .bar .ttl{display:none !important}',
+    '  .bar button{min-height:40px;padding:4px 8px}',
+    '  #menuBtn{order:1;flex:0 0 auto}',
+    '  .bar .grp:has(#mPlan){order:2;flex:1 1 0;display:flex}',
+    '  .bar .grp:has(#btnHelp){display:none !important}',
+    '  .bar .grp:has([data-floor]){order:4;flex:1 1 100%;display:flex}',
+    '  .bar .grp button{flex:1 1 0;min-width:0}',
+    '  #info{left:10px;right:10px;width:auto;top:102px;max-height:46vh}',
+    '  #compass{font-size:10px;padding:4px 7px;max-width:44vw;opacity:.92}',
+    '  #mapToggle{bottom:134px}',
+    '  body.mapOff #mapToggle{bottom:10px}',
+    '}'
+  ].join('');
+  document.head.appendChild(css);
+
+  // 1) the welcome/routes card stays shut until asked (it is the boot content of #info)
+  const info = $('info');
+  if(info && info.style.display === 'block' && info.innerHTML.indexOf('کہاں جانا') >= 0){
+    info.style.display = 'none';
+    setTimeout(() => toast('☰ مینیو سے راستے، مراحل اور سب کام ملتے ہیں — یا کسی کمرے پر کلک کریں'), 1200);
+  }
+
+  // 2) close chip for the info card (welcome, room, door, stair — all of them)
+  const chip = document.createElement('button');
+  chip.id = 'infoClose'; chip.textContent = '✕'; chip.title = 'بند کریں';
+  document.body.appendChild(chip);
+  chip.onclick = () => { info.style.display = 'none'; chip.style.display = 'none'; };
+  function placeChip(){
+    if(!info || info.style.display === 'none' || !info.innerHTML){ chip.style.display = 'none'; return; }
+    const r = info.getBoundingClientRect();
+    chip.style.display = 'block';
+    chip.style.top = (r.top + 6) + 'px';
+    chip.style.left = (r.right - 40) + 'px';
+  }
+  new MutationObserver(placeChip).observe(info, { attributes: true, attributeFilter: ['style'] });
+  window.addEventListener('resize', placeChip);
+
+  // 3) minimap fold — starts folded on phones, open on big screens
+  const mt = document.createElement('button');
+  mt.id = 'mapToggle'; mt.textContent = '🗺 نقشہ';
+  document.body.appendChild(mt);
+  function setMap(off){ document.body.classList.toggle('mapOff', off); mt.textContent = off ? '🗺 نقشہ دکھائیں' : '🗺 نقشہ'; }
+  mt.onclick = () => setMap(!document.body.classList.contains('mapOff'));
+  if(window.innerWidth <= 820) setMap(true);
+
+  // 4) routes + map controls move into the one menu (the Studio drawer pattern)
+  if(window.MENU && window.MENU.drawer){
+    const d = window.MENU.drawer;
+    const h = document.createElement('h4'); h.textContent = '🧭 راستے و نقشہ';
+    const box = document.createElement('div');
+    const b1 = document.createElement('button'); b1.id = 'menuRoutesBtn'; b1.textContent = '🧭 کہاں جانا ہے؟ — راستے دکھائیں';
+    b1.onclick = () => { if(typeof showWelcome === 'function') showWelcome(); };
+    const b2 = document.createElement('button'); b2.textContent = '🗺 چھوٹا نقشہ (منی میپ) آن / آف';
+    b2.onclick = () => setMap(!document.body.classList.contains('mapOff'));
+    const b3 = document.createElement('button'); b3.textContent = '؟ مدد — Help و طریقہ کار';
+    b3.onclick = () => { const hb = $('btnHelp'); if(hb) hb.click(); };
+    box.appendChild(b1); box.appendChild(b2); box.appendChild(b3);
+    d.appendChild(h); d.appendChild(box);
+  }
+  // shorter menu label on phones so Mode keeps thumb room on the same row
+  if(window.innerWidth <= 820){ const mb = $('menuBtn'); if(mb) mb.textContent = '☰ مینیو'; }
+
+  // 5) part11 (mobile layer) blanket-hides the "Where to" card — even when the user
+  // deliberately asks for it via the stairs button or the menu. Boot suppression is
+  // right; blocking an explicit tap is not. A deliberate tap sets a flag, and this
+  // re-wrap of panel() honours it.
+  document.addEventListener('click', e => {
+    if(e.target.closest && e.target.closest('#btnStairs, #menuRoutesBtn')) window.__allowWelcome = true;
+  }, true);
+  const _panelNow = panel;
+  panel = function(html){
+    _panelNow(html);
+    if(window.__allowWelcome && html.indexOf('Where to') >= 0) $('info').style.display = 'block';
+    window.__allowWelcome = false;
+  };
+
+  window.__QUIET = { setMap: setMap };
+})();
 </script>
 <script>if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script></body></html>
