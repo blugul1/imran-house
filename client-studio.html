@@ -1484,6 +1484,417 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
     window.__WIZ = { open: open, state: W };
   })();
+  // ---------- CAD sheet download (in-browser DXF, 7 Nov 2026) ----------
+  // The offline pipeline (cad_export.js + cad_sheet.py) as a client-side port:
+  // same plan (the live, already-trimmed PLAN), same sheet discipline, written
+  // as a minimal R12 DXF. All dimensions are hand-drawn (lines + arrowheads +
+  // text) — no DIMENSION entities, so the file can never carry the blank-text
+  // dimension defect the reload health check guards against.
+  (function cadDownload(){
+    const EPS = 0.03;
+    function ftin(v){ let f = Math.floor(v + 1e-9), i = Math.round((v - f) * 12); if(i === 12){ f++; i = 0; } return f + "'-" + i + '"'; }
+    function floorSegments(rooms){
+      const H = new Map(), V = new Map();
+      const add = (map, at, a, b) => { const k = Math.round(at * 100); if(!map.has(k)) map.set(k, { at, iv: [] }); map.get(k).iv.push([a, b]); };
+      for(const r of rooms){ add(H, r.z, r.x, r.x + r.w); add(H, r.z + r.d, r.x, r.x + r.w); add(V, r.x, r.z, r.z + r.d); add(V, r.x + r.w, r.z, r.z + r.d); }
+      const merge = iv => { iv.sort((p, q) => p[0] - q[0]); const out = []; for(const [a, b] of iv){ const last = out[out.length - 1]; if(last && a <= last[1] + EPS) last[1] = Math.max(last[1], b); else out.push([a, b]); } return out; };
+      const segs = [];
+      for(const { at, iv } of H.values()) for(const [a, b] of merge(iv)) segs.push({ dir: 'H', at, a, b });
+      for(const { at, iv } of V.values()) for(const [a, b] of merge(iv)) segs.push({ dir: 'V', at, a, b });
+      return segs;
+    }
+    function floorSheet(plan, fk){
+      const rooms = plan.rooms.filter(r => r.fk === fk);
+      if(!rooms.length) return null;
+      const x0 = Math.min(...rooms.map(r => r.x)), x1 = Math.max(...rooms.map(r => r.x + r.w));
+      const z0 = Math.min(...rooms.map(r => r.z)), z1 = Math.max(...rooms.map(r => r.z + r.d));
+      const segs = floorSegments(rooms);
+      const walls = [], openings = [];
+      const CIRC = ['circ', 'hall', 'court'];
+      function swingFor(sg, c){
+        let plus = null, minus = null;
+        if(sg.dir === 'H'){
+          plus = rooms.find(r => Math.abs(r.z - sg.at) < 0.05 && c > r.x - EPS && c < r.x + r.w + EPS);
+          minus = rooms.find(r => Math.abs(r.z + r.d - sg.at) < 0.05 && c > r.x - EPS && c < r.x + r.w + EPS);
+        } else {
+          plus = rooms.find(r => Math.abs(r.x - sg.at) < 0.05 && c > r.z - EPS && c < r.z + r.d + EPS);
+          minus = rooms.find(r => Math.abs(r.x + r.w - sg.at) < 0.05 && c > r.z - EPS && c < r.z + r.d + EPS);
+        }
+        if(plus && !minus) return 1;
+        if(minus && !plus) return -1;
+        if(plus && minus){
+          const pc = CIRC.includes(plus.type), mc = CIRC.includes(minus.type);
+          if(pc !== mc) return pc ? -1 : 1;
+          return (plus.w * plus.d) <= (minus.w * minus.d) ? 1 : -1;
+        }
+        return 1;
+      }
+      for(const sg of segs){
+        const cuts = [];
+        for(const d of plan.doors){ if(d.fk != null && d.fk !== fk) continue; const onH = (d.wall === 'S' || d.wall === 'N'); if(sg.dir === 'H' && onH && Math.abs(d.z - sg.at) < EPS && d.x > sg.a && d.x < sg.b) cuts.push({ c: d.x, w: d.w, kind: 'door', swing: swingFor(sg, d.x) }); if(sg.dir === 'V' && !onH && Math.abs(d.x - sg.at) < EPS && d.z > sg.a && d.z < sg.b) cuts.push({ c: d.z, w: d.w, kind: 'door', swing: swingFor(sg, d.z) }); }
+        for(const wn of plan.windows){ if(wn.fk != null && wn.fk !== fk) continue; const onH = (wn.wall === 'S' || wn.wall === 'N'); if(sg.dir === 'H' && onH && Math.abs(wn.z - sg.at) < EPS && wn.x > sg.a && wn.x < sg.b) cuts.push({ c: wn.x, w: wn.w, kind: wn.vent ? 'vent' : 'win' }); if(sg.dir === 'V' && !onH && Math.abs(wn.x - sg.at) < EPS && wn.z > sg.a && wn.z < sg.b) cuts.push({ c: wn.z, w: wn.w, kind: wn.vent ? 'vent' : 'win' }); }
+        cuts.sort((p, q) => p.c - q.c);
+        const ext = (sg.dir === 'H' && (Math.abs(sg.at - z0) < EPS || Math.abs(sg.at - z1) < EPS)) || (sg.dir === 'V' && (Math.abs(sg.at - x0) < EPS || Math.abs(sg.at - x1) < EPS));
+        let cur = sg.a;
+        for(const ct of cuts){
+          const s0 = ct.c - ct.w / 2, s1 = ct.c + ct.w / 2;
+          if(s0 > cur + 0.02) walls.push({ dir: sg.dir, at: sg.at, a: cur, b: s0, ext });
+          openings.push({ dir: sg.dir, at: sg.at, c: ct.c, w: ct.w, kind: ct.kind, ext, swing: ct.swing || 1 });
+          cur = Math.max(cur, s1);
+        }
+        if(cur < sg.b - 0.02) walls.push({ dir: sg.dir, at: sg.at, a: cur, b: sg.b, ext });
+      }
+      const xs = [...new Set(rooms.flatMap(r => [r.x, r.x + r.w]).map(v => Math.round(v * 100) / 100))].sort((a, b) => a - b);
+      const zs = [...new Set(rooms.flatMap(r => [r.z, r.z + r.d]).map(v => Math.round(v * 100) / 100))].sort((a, b) => a - b);
+      const stairs = [];
+      for(const r of rooms){
+        if(r.type !== 'hall') continue;
+        const sw = Math.min(3.4, r.w / 2 - 0.3);
+        if(sw <= 0 || r.d < 6) continue;
+        stairs.push({ runA: { x0: r.x + 0.2, x1: r.x + 0.2 + sw }, runB: { x0: r.x + r.w - 0.2 - sw, x1: r.x + r.w - 0.2 }, z0: r.z + 1, z1: r.z + r.d - 1, steps: 16 });
+      }
+      const spineCx = (plan.meta.x0 + plan.meta.x1) / 2;
+      const wet = rooms.filter(r => r.type === 'bath' || r.type === 'kitchen');
+      const plumb = { points: [], lines: [], tank: null, pump: null };
+      if(wet.length){
+        let maxZ = z0;
+        for(const r of wet){
+          const cx = r.x + r.w / 2, cz = r.z + r.d / 2;
+          maxZ = Math.max(maxZ, cz);
+          plumb.points.push({ x: cx, z: cz, kind: r.type });
+          if(Math.abs(spineCx - cx) > 0.4) plumb.lines.push({ x1: cx, z1: cz, x2: spineCx, z2: cz, kind: 'conn' });
+        }
+        if(maxZ - (z0 + 0.6) > 1) plumb.lines.push({ x1: spineCx, z1: z0 + 0.6, x2: spineCx, z2: maxZ, kind: 'spine' });
+        plumb.points.push({ x: spineCx, z: z0 + 0.3, kind: 'shaft' });
+        const hall = rooms.find(r => r.type === 'hall');
+        const topFk = plan.meta.floors >= 2 ? 'first' : 'ground';
+        if(hall && fk === topFk) plumb.tank = { x: hall.x + hall.w / 2, z: hall.z + hall.d / 2 };
+        if(hall && fk === 'ground') plumb.pump = { x: hall.x + hall.w / 2, z: z0 + 1.2 };
+      }
+      const elec = { db: null, lights: [], fans: [], sockets: [] };
+      const hallE = rooms.find(r => r.type === 'hall');
+      if(hallE) elec.db = { x: hallE.x + hallE.w / 2, z: hallE.z + 0.7 };
+      for(const r of rooms){
+        if(r.type === 'court' || r.type === 'circ') continue;
+        const cx = r.x + r.w / 2, cz = r.z + r.d / 2;
+        elec.lights.push({ x: cx, z: cz });
+        if(['bed', 'living', 'lounge', 'drawing', 'study'].includes(r.type)) elec.fans.push({ x: cx, z: cz + 1.3 });
+        const ns = r.type === 'kitchen' ? 4 : 2;
+        for(let i = 0; i < ns; i++) elec.sockets.push({ x: cx + (i - (ns - 1) / 2) * Math.max(1.2, r.w / (ns + 1)), z: r.z + 0.45 });
+      }
+      return { fk, x0, x1, z0, z1, walls, openings, stairs, mep: { plumb, elec }, rooms: rooms.map(r => ({ type: r.type, x: r.x, z: r.z, w: r.w, d: r.d })), chainX: xs, chainZ: zs };
+    }
+    // ---- minimal R12 DXF writer ----
+    function dxfWriter(){
+      const E = [];
+      const n = v => String(Math.round(v * 10000) / 10000);
+      const line = (x1, y1, x2, y2, lay) => E.push('0\nLINE\n8\n' + lay + '\n10\n' + n(x1) + '\n20\n' + n(y1) + '\n30\n0\n11\n' + n(x2) + '\n21\n' + n(y2) + '\n31\n0');
+      const text = (s, x, y, h, lay, align, rot) => {
+        let a = '0\nTEXT\n8\n' + lay + '\n10\n' + n(x) + '\n20\n' + n(y) + '\n30\n0\n40\n' + n(h) + '\n1\n' + s;
+        if(rot) a += '\n50\n' + n(rot);
+        a += '\n7\nBBB';
+        if(align === 'C') a += '\n72\n1\n11\n' + n(x) + '\n21\n' + n(y) + '\n31\n0\n73\n2';
+        else if(align === 'R') a += '\n72\n2\n11\n' + n(x) + '\n21\n' + n(y) + '\n31\n0\n73\n2';
+        else if(align === 'L') a += '\n72\n0\n11\n' + n(x) + '\n21\n' + n(y) + '\n31\n0\n73\n2';
+        E.push(a);
+      };
+      const circle = (x, y, r, lay) => E.push('0\nCIRCLE\n8\n' + lay + '\n10\n' + n(x) + '\n20\n' + n(y) + '\n30\n0\n40\n' + n(r));
+      const solid = (pts, lay) => { const p = pts.length === 3 ? [pts[0], pts[1], pts[2], pts[2]] : pts; E.push('0\nSOLID\n8\n' + lay + '\n10\n' + n(p[0][0]) + '\n20\n' + n(p[0][1]) + '\n30\n0\n11\n' + n(p[1][0]) + '\n21\n' + n(p[1][1]) + '\n31\n0\n12\n' + n(p[2][0]) + '\n22\n' + n(p[2][1]) + '\n32\n0\n13\n' + n(p[3][0]) + '\n23\n' + n(p[3][1]) + '\n33\n0'); };
+      const rect = (x1, y1, x2, y2, lay) => { line(x1, y1, x2, y1, lay); line(x2, y1, x2, y2, lay); line(x2, y2, x1, y2, lay); line(x1, y2, x1, y1, lay); };
+      function build(){
+        const layers = [['A-WALL-EXT', 7], ['A-WALL-INT', 7], ['A-DOOR', 4], ['A-GLAZ', 5], ['A-ANNO-DIMS', 2], ['A-ANNO-TEXT', 3], ['A-TITL', 7], ['A-PLOT', 8], ['A-AUX', 8], ['P-PIPE', 5], ['E-ELEC', 1]];
+        let out = '0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0\n0\nENDTAB\n0\nTABLE\n2\nLAYER\n70\n' + layers.length + '\n';
+        for(const [nm, col] of layers) out += '0\nLAYER\n2\n' + nm + '\n70\n0\n62\n' + col + '\n6\nCONTINUOUS\n';
+        out += '0\nENDTAB\n0\nTABLE\n2\nSTYLE\n70\n1\n0\nSTYLE\n2\nBBB\n70\n0\n40\n0\n41\n1\n50\n0\n71\n0\n42\n0.2\n3\narial.ttf\n4\n\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n';
+        out += E.join('\n') + '\n0\nENDSEC\n0\nEOF';
+        return out;
+      }
+      return { line, text, circle, solid, rect, build };
+    }
+    function chainPts(pts){
+      if(pts.length < 2) return [];
+      const out = [pts[0]];
+      for(const v of pts.slice(1, -1)) if(v - out[out.length - 1] >= 1.2) out.push(v);
+      out.push(pts[pts.length - 1]);
+      while(out.length > 2){
+        const gaps = out.slice(1).map((v, i) => v - out[i]);
+        const m = Math.min(...gaps);
+        if(m >= 1.0) break;
+        const i = gaps.indexOf(m);
+        if(i + 1 < out.length - 1) out.splice(i + 1, 1); else out.splice(i, 1);
+      }
+      return out;
+    }
+    function titleBlock(w, data, tname, tno, ox, FH, scaleLine, noteL2, noteR2, noteL1){
+      const line = w.line, text = w.text;
+      w.rect(ox, 0, ox + data._FW, FH, 'A-TITL');
+      w.rect(ox, 0, ox + data._FW, 8.4, 'A-TITL');
+      line(ox, 4.9, ox + data._FW, 4.9, 'A-TITL'); line(ox, 2.45, ox + data._FW, 2.45, 'A-TITL');
+      const sx = ox + data._FW * 0.55;
+      line(sx, 0, sx, 2.45, 'A-TITL'); line(sx, 2.45, sx, 4.9, 'A-TITL');
+      text('BBB - BHIMBER BUSINESS BUREAU', ox + 1, 7.15, 0.92, 'A-TITL', 'L');
+      text('Measured Land. Verified Papers.', ox + 1, 5.75, 0.58, 'A-TITL', 'L');
+      text(tname, ox + data._FW - 1, 7.15, 0.85, 'A-TITL', 'R');
+      text(tno, ox + data._FW - 1, 5.75, 0.58, 'A-TITL', 'R');
+      text('PROJECT: ' + data.name + ' - ' + data.location + '    PLOT: ' + ftin(data.plot.front) + ' x ' + ftin(data.plot.left), ox + 1, 3.65, 0.6, 'A-TITL', 'L');
+      text(scaleLine + '    DATE: ' + data.date, sx + 1, 3.65, 0.6, 'A-TITL', 'L');
+      text(noteL1 || 'DRAWN: BBB CLIENT STUDIO - AUTOMATIC FROM CLIENT MEASUREMENTS', ox + 1, 1.55, 0.55, 'A-TITL', 'L');
+      text(noteL2, ox + 1, 0.62, 0.5, 'A-TITL', 'L');
+      text('STATUS: CONCEPT - NOT FOR CONSTRUCTION', sx + 1, 1.55, 0.58, 'A-TITL', 'L');
+      text(noteR2, sx + 1, 0.62, 0.5, 'A-TITL', 'L');
+    }
+    function drawPlanSheet(w, data, sh, ox){
+      const { x0, z0, x1, z1 } = sh;
+      const W = x1 - x0, D = z1 - z0, pw = data.meta.plotW, pd = data.meta.depth;
+      const plotTop = pd - z0;
+      const FW = Math.max(W + 19, 56), FH = Math.max(D, plotTop) + 4.5 + 21.5;
+      data._FW = FW;
+      const PX = ox + 9.5 + Math.max(0, (FW - 19 - W) / 2);
+      const X = x => PX + (x - x0), Y = z => 21.5 + (z - z0);
+      const line = w.line, text = w.text;
+      const px0 = PX + (0 - x0), py0 = Y(0);
+      w.rect(px0, py0, px0 + pw, py0 + pd, 'A-PLOT');
+      text('PLOT LINE', px0 + pw / 2, py0 + pd + 1.2, 0.65, 'A-AUX', 'C');
+      text('STREET / FRONT', PX + W / 2, Y(z0) - 9.3, 0.75, 'A-AUX', 'C');
+      for(const ws of sh.walls){
+        const t = ws.ext ? 0.75 : 0.375, lay = ws.ext ? 'A-WALL-EXT' : 'A-WALL-INT';
+        if(ws.dir === 'H'){ const y = Y(ws.at); line(X(ws.a), y - t / 2, X(ws.b), y - t / 2, lay); line(X(ws.a), y + t / 2, X(ws.b), y + t / 2, lay); }
+        else { const x = X(ws.at); line(x - t / 2, Y(ws.a), x - t / 2, Y(ws.b), lay); line(x + t / 2, Y(ws.a), x + t / 2, Y(ws.b), lay); }
+      }
+      for(const op of sh.openings){
+        const wdt = op.w;
+        if(op.kind === 'door'){
+          const sw = op.swing || 1;
+          if(op.dir === 'H'){
+            const hx = X(op.c - wdt / 2), hy = Y(op.at);
+            line(hx, hy, hx, hy + sw * wdt, 'A-DOOR');
+            let pxp = null, pyp = null;
+            for(let k = 0; k <= 12; k++){ const ax = hx + wdt * Math.sin((Math.PI / 2) * (k / 12)), ay = hy + sw * wdt * Math.cos((Math.PI / 2) * (k / 12)); if(pxp !== null) line(pxp, pyp, ax, ay, 'A-DOOR'); pxp = ax; pyp = ay; }
+          } else {
+            const hx = X(op.at), hy = Y(op.c - wdt / 2);
+            line(hx, hy, hx + sw * wdt, hy, 'A-DOOR');
+            let pxp = null, pyp = null;
+            for(let k = 0; k <= 12; k++){ const ax = hx + sw * wdt * Math.cos((Math.PI / 2) * (k / 12)), ay = hy + wdt * Math.sin((Math.PI / 2) * (k / 12)); if(pxp !== null) line(pxp, pyp, ax, ay, 'A-DOOR'); pxp = ax; pyp = ay; }
+          }
+        } else if(op.kind === 'win'){
+          const t = op.ext ? 0.75 : 0.375;
+          for(const off of [-t / 2, 0, t / 2]){
+            if(op.dir === 'H') line(X(op.c - wdt / 2), Y(op.at) + off, X(op.c + wdt / 2), Y(op.at) + off, 'A-GLAZ');
+            else line(X(op.at) + off, Y(op.c - wdt / 2), X(op.at) + off, Y(op.c + wdt / 2), 'A-GLAZ');
+          }
+        } else {
+          for(const off of [-0.2, 0.2]){
+            if(op.dir === 'H') line(X(op.c - wdt / 2), Y(op.at) + off, X(op.c + wdt / 2), Y(op.at) + off, 'A-GLAZ');
+            else line(X(op.at) + off, Y(op.c - wdt / 2), X(op.at) + off, Y(op.c + wdt / 2), 'A-GLAZ');
+          }
+        }
+      }
+      for(const st of sh.stairs){
+        for(const [run, up] of [[st.runA, true], [st.runB, false]]){
+          const xa = X(run.x0), xb = X(run.x1), ya = Y(st.z0), yb = Y(st.z1);
+          w.rect(xa, ya, xb, yb, 'A-AUX');
+          const cxr = (xa + xb) / 2;
+          if(up){
+            line(cxr, ya + 0.4, cxr, yb - 1.15, 'A-ANNO-TEXT');
+            w.solid([[cxr, yb - 0.35], [cxr - 0.34, yb - 1.15], [cxr + 0.34, yb - 1.15]], 'A-ANNO-TEXT');
+            text('UP', cxr + 0.95, (ya + yb) / 2, 0.55, 'A-ANNO-TEXT', 'C');
+          } else {
+            line(cxr, yb - 0.4, cxr, ya + 1.15, 'A-ANNO-TEXT');
+            w.solid([[cxr, ya + 0.35], [cxr - 0.34, ya + 1.15], [cxr + 0.34, ya + 1.15]], 'A-ANNO-TEXT');
+            text('DN', cxr + 0.95, (ya + yb) / 2, 0.55, 'A-ANNO-TEXT', 'C');
+          }
+        }
+        const cxm = X((st.runA.x1 + st.runB.x0) / 2);
+        text(st.steps + ' RISERS', cxm, Y(st.z0 + (st.z1 - st.z0) * 0.22), 0.5, 'A-ANNO-TEXT', 'C', 90);
+      }
+      const fits = (s, h, avail) => s.length * 0.54 * h <= avail;
+      for(const r of sh.rooms){
+        const cx = X(r.x + r.w / 2), cy = Y(r.z + r.d / 2);
+        const t1 = r.type.toUpperCase(), t2 = ftin(r.w) + ' x ' + ftin(r.d);
+        if(r.d >= 2.2 && fits(t1, 0.7, r.w - 0.3) && fits(t2, 0.6, r.w - 0.3)){ text(t1, cx, cy + 0.55, 0.7, 'A-ANNO-TEXT', 'C'); text(t2, cx, cy - 0.55, 0.6, 'A-ANNO-TEXT', 'C'); }
+        else if(fits(t1, 0.7, r.d - 0.3) && fits(t2, 0.6, r.d - 0.3)){ text(t1, cx - 0.55, cy, 0.7, 'A-ANNO-TEXT', 'C', 90); text(t2, cx + 0.55, cy, 0.6, 'A-ANNO-TEXT', 'C', 90); }
+        else if(fits(t2, 0.55, r.w - 0.2)) text(t2, cx, cy, 0.55, 'A-ANNO-TEXT', 'C');
+      }
+      function dimH(xa, xb, y, wy){
+        const s = ftin(Math.abs(xb - xa));
+        line(xa, wy - 0.3, xa, y - 0.4, 'A-ANNO-DIMS'); line(xb, wy - 0.3, xb, y - 0.4, 'A-ANNO-DIMS');
+        line(xa, y, xb, y, 'A-ANNO-DIMS');
+        w.solid([[xa, y], [xa + 0.55, y + 0.13], [xa + 0.55, y - 0.13]], 'A-ANNO-DIMS');
+        w.solid([[xb, y], [xb - 0.55, y + 0.13], [xb - 0.55, y - 0.13]], 'A-ANNO-DIMS');
+        text(s, (xa + xb) / 2, y + 0.72, 0.62, 'A-ANNO-DIMS', 'C');
+      }
+      function dimV(ya, yb, x, wx){
+        const s = ftin(Math.abs(yb - ya));
+        line(wx - 0.3, ya, x - 0.4, ya, 'A-ANNO-DIMS'); line(wx - 0.3, yb, x - 0.4, yb, 'A-ANNO-DIMS');
+        line(x, ya, x, yb, 'A-ANNO-DIMS');
+        w.solid([[x, ya], [x + 0.13, ya + 0.55], [x - 0.13, ya + 0.55]], 'A-ANNO-DIMS');
+        w.solid([[x, yb], [x + 0.13, yb - 0.55], [x - 0.13, yb - 0.55]], 'A-ANNO-DIMS');
+        text(s, x - 0.72, (ya + yb) / 2, 0.62, 'A-ANNO-DIMS', 'C', 90);
+      }
+      const chX = chainPts(sh.chainX);
+      if(chX.length >= 2 && chX.length <= 8) for(let i = 0; i < chX.length - 1; i++) dimH(X(chX[i]), X(chX[i + 1]), Y(z0) - 3.2, Y(z0));
+      dimH(X(x0), X(x1), Y(z0) - 5.9, Y(z0));
+      const chZ = chainPts(sh.chainZ);
+      if(chZ.length >= 2 && chZ.length <= 8) for(let i = 0; i < chZ.length - 1; i++) dimV(Y(chZ[i]), Y(chZ[i + 1]), PX - 3.2, PX);
+      dimV(Y(z0), Y(z1), PX - 5.9, PX);
+      const lv = { ground: "FFL +/-0'-0\"", first: "FFL +11'-0\"", basement: "FFL -11'-0\"" }[sh.fk];
+      const fx = X(x0), fy = Y(z0);
+      w.circle(fx, fy, 0.55, 'A-ANNO-TEXT');
+      line(fx - 0.8, fy, fx + 0.8, fy, 'A-ANNO-TEXT'); line(fx, fy - 0.8, fx, fy + 0.8, 'A-ANNO-TEXT');
+      text(lv, fx + 0.9, fy + 0.75, 0.55, 'A-ANNO-TEXT', 'L');
+      const nx = ox + FW - 4.2, ny = FH - 4.2;
+      w.circle(nx, ny, 1.8, 'A-AUX');
+      w.solid([[nx, ny + 1.45], [nx - 0.5, ny - 0.85], [nx + 0.5, ny - 0.85]], 'A-AUX');
+      text('N', nx, ny + 2.5, 0.9, 'A-AUX', 'C');
+      const bx = PX + W - 10, by = Y(z0) - 11.6;
+      for(let i = 0; i < 2; i++) w.rect(bx + i * 5, by, bx + i * 5 + 5, by + 0.55, 'A-AUX');
+      text('0          5          10 FT', bx + 5, by - 0.95, 0.52, 'A-AUX', 'C');
+      const tname = { ground: 'GROUND FLOOR PLAN', first: 'FIRST FLOOR PLAN', basement: 'BASEMENT PLAN' }[sh.fk];
+      const tno = sh.fk === 'ground' ? 'SHEET A-1' : (sh.fk === 'first' ? 'SHEET A-2' : 'SHEET A-0');
+      titleBlock(w, data, tname, tno, ox, FH, 'SCALE 1:50 @ A3 - MODEL 1:1 FT', 'All dimensions in feet-inches. DO NOT SCALE THE DRAWING - VERIFY ALL DIMENSIONS AT SITE.', 'North per drawing convention - verify orientation on site.');
+      return FW;
+    }
+    function drawSchedule(w, data, ox){
+      const groups = {};
+      const order = { door: 0, win: 1, vent: 2 };
+      for(const sh of data.sheets) for(const op of sh.openings){
+        const k = op.kind + '|' + Math.round(op.w * 100) / 100;
+        if(!groups[k]) groups[k] = { kind: op.kind, w: op.w, floors: {} };
+        groups[k].floors[sh.fk] = (groups[k].floors[sh.fk] || 0) + 1;
+      }
+      const rows = Object.values(groups).sort((a, b) => (order[a.kind] - order[b.kind]) || (a.w - b.w));
+      const counters = { door: 0, win: 0, vent: 0 };
+      for(const g of rows){ counters[g.kind]++; g.mark = { door: 'D', win: 'W', vent: 'V' }[g.kind] + counters[g.kind]; g.total = Object.values(g.floors).reduce((a, b) => a + b, 0); }
+      const dims = { door: ["7'-0\"", '-'], win: ["4'-0\"", "3'-0\""], vent: ["2'-2\"", "4'-2\""] };
+      const fks = data.sheets.map(s => s.fk);
+      const FW = 62, FH = 26 + rows.length * 2.1;
+      data._FW = FW;
+      const text = w.text, line = w.line;
+      text('OPENINGS SCHEDULE', ox + FW / 2, FH - 3.4, 1.25, 'A-TITL', 'C');
+      text('Sizes as modelled by the Studio engine - CONCEPT. Verify every opening on site before ordering doors/windows.', ox + FW / 2, FH - 5.6, 0.62, 'A-AUX', 'C');
+      let cols = [['MARK', 6.5], ['TYPE', 9], ['WIDTH', 7.5], ['HEIGHT', 7.5], ['SILL', 6.5]].concat(fks.map(f => [f.toUpperCase(), 7.5])).concat([['TOTAL', 6]]);
+      const sc = (FW - 4) / cols.reduce((a, c) => a + c[1], 0);
+      cols = cols.map(c => [c[0], c[1] * sc]);
+      const xs = [ox + 2];
+      for(const c of cols) xs.push(xs[xs.length - 1] + c[1]);
+      const top = FH - 9.5, rh = 2.1;
+      cols.forEach((c, j) => text(c[0], (xs[j] + xs[j + 1]) / 2, top - rh / 2, 0.66, 'A-TITL', 'C'));
+      line(xs[0], top, xs[xs.length - 1], top, 'A-TITL'); line(xs[0], top - rh, xs[xs.length - 1], top - rh, 'A-TITL');
+      rows.forEach((g, i) => {
+        const cy = top - rh * (i + 1.5);
+        const vals = [g.mark, { door: 'DOOR', win: 'WINDOW', vent: 'VENT' }[g.kind], ftin(g.w), dims[g.kind][0], dims[g.kind][1]].concat(fks.map(f => String(g.floors[f] || 0))).concat([String(g.total)]);
+        vals.forEach((v, j) => text(v, (xs[j] + xs[j + 1]) / 2, cy, 0.62, 'A-ANNO-TEXT', 'C'));
+        line(xs[0], top - rh * (i + 2), xs[xs.length - 1], top - rh * (i + 2), 'A-AUX');
+      });
+      for(const xv of xs) line(xv, top, xv, top - rh * (rows.length + 1), 'A-AUX');
+      const tot = { door: 0, win: 0, vent: 0 };
+      for(const sh of data.sheets) for(const op of sh.openings) tot[op.kind]++;
+      text('TOTAL OPENINGS: ' + (tot.door + tot.win + tot.vent) + '  (DOORS ' + tot.door + ' - WINDOWS ' + tot.win + ' - VENTS ' + tot.vent + ')', ox + FW / 2, top - rh * (rows.length + 1) - 2.2, 0.66, 'A-TITL', 'C');
+      titleBlock(w, data, 'OPENINGS SCHEDULE', 'SHEET A-3', ox, FH, 'SCALE: TABLE - MODEL 1:1 FT', 'All dimensions in feet-inches. DO NOT SCALE THE DRAWING - VERIFY ALL DIMENSIONS AT SITE.', 'Marks D/W/V match the plan symbols by width group.');
+      return FW;
+    }
+    function drawMep(w, data, sh, kind, ox){
+      const { x0, z0, x1, z1 } = sh;
+      const W = x1 - x0, D = z1 - z0, pw = data.meta.plotW, pd = data.meta.depth;
+      const plotTop = pd - z0;
+      const FW = Math.max(W + 19, 56), FH = Math.max(D, plotTop) + 4.5 + 21.5;
+      data._FW = FW;
+      const PX = ox + 9.5 + Math.max(0, (FW - 19 - W) / 2);
+      const X = x => PX + (x - x0), Y = z => 21.5 + (z - z0);
+      const line = w.line, text = w.text;
+      const px0 = PX + (0 - x0), py0 = Y(0);
+      w.rect(px0, py0, px0 + pw, py0 + pd, 'A-PLOT');
+      for(const ws of sh.walls){
+        if(ws.dir === 'H') line(X(ws.a), Y(ws.at), X(ws.b), Y(ws.at), 'A-AUX');
+        else line(X(ws.at), Y(ws.a), X(ws.at), Y(ws.b), 'A-AUX');
+      }
+      for(const r of sh.rooms) text(r.type.toUpperCase(), X(r.x + r.w / 2), Y(r.z + r.d / 2) - 1.35, 0.52, 'A-AUX', 'C');
+      let legend, tname, tno, note2;
+      if(kind === 'plumb'){
+        const P = sh.mep.plumb;
+        for(const ln of P.lines) line(X(ln.x1), Y(ln.z1), X(ln.x2), Y(ln.z2), 'P-PIPE');
+        for(const p of P.points){
+          const cx = X(p.x), cy = Y(p.z);
+          if(p.kind === 'shaft'){ w.rect(cx - 0.45, cy - 0.45, cx + 0.45, cy + 0.45, 'P-PIPE'); text('SHAFT', cx, cy - 1.1, 0.5, 'P-PIPE', 'C'); }
+          else { w.circle(cx, cy, 0.55, 'P-PIPE'); line(cx - 0.55, cy, cx + 0.55, cy, 'P-PIPE'); line(cx, cy - 0.55, cx, cy + 0.55, 'P-PIPE'); }
+        }
+        if(P.pump){ const cx = X(P.pump.x), cy = Y(P.pump.z); w.rect(cx - 0.5, cy - 0.5, cx + 0.5, cy + 0.5, 'P-PIPE'); text('PUMP', cx, cy + 1.05, 0.5, 'P-PIPE', 'C'); }
+        if(P.tank){ const cx = X(P.tank.x), cy = Y(P.tank.z); w.rect(cx - 1.4, cy - 1.4, cx + 1.4, cy + 1.4, 'P-PIPE'); w.rect(cx - 1.15, cy - 1.15, cx + 1.15, cy + 1.15, 'P-PIPE'); text('ROOF TANK (ABOVE)', cx, cy - 2.1, 0.52, 'P-PIPE', 'C'); }
+        legend = [['CIRCLE+CROSS', 'WATER / DRAIN POINT (ROOM CENTRE)'], ['SQUARE', 'SHAFT / PUMP'], ['BLUE LINE', 'INDICATIVE PIPE RUN TO SPINE']];
+        tname = 'PLUMBING LAYOUT (SCHEMATIC)'; tno = { ground: 'SHEET P-1', first: 'SHEET P-2', basement: 'SHEET P-0' }[sh.fk];
+        note2 = 'Final routes and points decided on site by your plumber and engineer.';
+      } else {
+        const E = sh.mep.elec;
+        if(E.db){ const cx = X(E.db.x), cy = Y(E.db.z); w.rect(cx - 0.8, cy - 0.5, cx + 0.8, cy + 0.5, 'E-ELEC'); text('DB', cx, cy, 0.55, 'E-ELEC', 'C'); }
+        for(const p of E.lights){ const cx = X(p.x), cy = Y(p.z); w.circle(cx, cy, 0.42, 'E-ELEC'); line(cx - 0.42, cy, cx + 0.42, cy, 'E-ELEC'); line(cx, cy - 0.42, cx, cy + 0.42, 'E-ELEC'); }
+        for(const p of E.fans){ const cx = X(p.x), cy = Y(p.z); w.circle(cx, cy, 0.5, 'E-ELEC'); text('F', cx, cy, 0.5, 'E-ELEC', 'C'); }
+        for(const p of E.sockets) w.rect(X(p.x) - 0.18, Y(p.z) - 0.18, X(p.x) + 0.18, Y(p.z) + 0.18, 'E-ELEC');
+        legend = [['CIRCLE+CROSS', 'CEILING LIGHT POINT'], ['CIRCLE + F', 'FAN POINT'], ['SMALL SQUARE', 'SOCKET / SWITCH POINT'], ['DB BOX', 'DISTRIBUTION BOARD (IN HALL)']];
+        tname = 'ELECTRICAL LAYOUT (SCHEMATIC)'; tno = { ground: 'SHEET E-1', first: 'SHEET E-2', basement: 'SHEET E-0' }[sh.fk];
+        note2 = 'Final routes and points decided on site by your electrician and engineer.';
+      }
+      const lx = ox + FW - 24.5, ly = FH - 3.2;
+      text('LEGEND', lx + 11, ly, 0.68, 'A-TITL', 'L');
+      legend.forEach((lg, i) => { const yy = ly - 1.7 - i * 1.55; text(lg[0], lx, yy, 0.52, 'A-ANNO-TEXT', 'L'); text(lg[1], lx + 7.6, yy, 0.52, 'A-ANNO-TEXT', 'L'); });
+      const nx = ox + FW - 4.2, ny = FH - 4.2;
+      w.circle(nx, ny, 1.8, 'A-AUX');
+      w.solid([[nx, ny + 1.45], [nx - 0.5, ny - 0.85], [nx + 0.5, ny - 0.85]], 'A-AUX');
+      text('N', nx, ny + 2.5, 0.9, 'A-AUX', 'C');
+      const fname = { ground: 'GROUND FLOOR', first: 'FIRST FLOOR', basement: 'BASEMENT' }[sh.fk];
+      titleBlock(w, data, tname, tno + ' - ' + fname, ox, FH, 'MODEL 1:1 FT - POSITIONS SCHEMATIC', note2, 'Same points as the Studio app MEP layer.', 'SCHEMATIC - positions are indicative only, not installation drawings.');
+      return FW;
+    }
+    function buildDXF(){
+      if(!PLAN){ toast('پہلے نقشہ بنائیں — پھر CAD شیٹ اترے گی'); return null; }
+      const spec = window.__STUDIO ? window.__STUDIO.spec : null;
+      const ascii = s => /^[\x20-\x7E]*$/.test(s || '');
+      const dt = new Date();
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const data = {
+        name: spec && ascii(spec.name) && spec.name ? spec.name.toUpperCase() : 'CLIENT',
+        location: 'BHIMBER',
+        plot: spec ? spec.plot : { front: PLAN.meta.plotW, left: PLAN.meta.depth },
+        meta: { plotW: PLAN.meta.plotW, depth: PLAN.meta.depth },
+        date: String(dt.getDate()).padStart(2, '0') + '-' + months[dt.getMonth()] + '-' + dt.getFullYear(),
+        sheets: []
+      };
+      for(const fk of ['basement', 'ground', 'first']){ const s = floorSheet(PLAN, fk); if(s) data.sheets.push(s); }
+      const w = dxfWriter();
+      let ox = 0;
+      const GAP = 14;
+      for(const sh of data.sheets){ ox += drawPlanSheet(w, data, sh, ox) + GAP; }
+      ox += drawSchedule(w, data, ox) + GAP;
+      for(const sh of data.sheets){ ox += drawMep(w, data, sh, 'plumb', ox) + GAP; ox += drawMep(w, data, sh, 'elec', ox) + GAP; }
+      return { dxf: w.build(), sheets: data.sheets.length };
+    }
+    window.__CAD = { build: buildDXF };
+    // #mShot is created by the menu section AFTER this module runs — mount the
+    // button next to it whenever it appears (retry briefly, then give up quietly)
+    let mountTries = 0;
+    const mountIv = setInterval(() => {
+      mountTries++;
+      const shot = $('mShot');
+      if(shot && shot.parentElement){
+        clearInterval(mountIv);
+        if($('mCad')) return;
+        const b = document.createElement('button');
+        b.id = 'mCad'; b.type = 'button'; b.className = shot.className;
+        b.textContent = '📐 CAD شیٹ ڈاؤن لوڈ (DXF)';
+        shot.parentElement.insertBefore(b, shot.nextSibling);
+        b.onclick = () => {
+          const r = buildDXF();
+          if(!r) return;
+          const blob = new Blob([r.dxf], { type: 'application/dxf' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'bbb-cad-sheets.dxf';
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+          toast('CAD شیٹ اتر گئی — ' + r.sheets + ' منزل شیٹس + شیڈول + پلمبنگ/بجلی (تصوری — تعمیر کے لیے نہیں)');
+        };
+      } else if(mountTries > 20) clearInterval(mountIv);
+    }, 700);
+  })();
   // ---------- menu ----------
   const drawer = $('menuDrawer');
   drawer.innerHTML = '<h4>🏗 تعمیر</h4><button id="mStages">🏗 بنتا ہوا گھر — مراحل</button>'
