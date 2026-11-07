@@ -85,13 +85,14 @@
   </fieldset>
   <fieldset><legend>📐 پلاٹ کی پیمائش (فٹ)</legend>
     <div class="grid">
-      <label class="f">سامنے — سڑک والی سمت<input type="number" inputmode="decimal" id="f_front" value="40" min="15" max="200"></label>
-      <label class="f">پیچھے<input type="number" inputmode="decimal" id="f_back" value="40" min="15" max="200"></label>
-      <label class="f">دائیں جانب گہرائی<input type="number" inputmode="decimal" id="f_right" value="75" min="20" max="300"></label>
-      <label class="f">بائیں جانب گہرائی<input type="number" inputmode="decimal" id="f_left" value="75" min="20" max="300"></label>
+      <label class="f">سامنے — سڑک والی سمت<input type="text" inputmode="decimal" id="f_front" value="40" min="15" max="200"></label>
+      <label class="f">پیچھے<input type="text" inputmode="decimal" id="f_back" value="40" min="15" max="200"></label>
+      <label class="f">دائیں جانب گہرائی<input type="text" inputmode="decimal" id="f_right" value="75" min="20" max="300"></label>
+      <label class="f">بائیں جانب گہرائی<input type="text" inputmode="decimal" id="f_left" value="75" min="20" max="300"></label>
     </div>
+    <p class="sub" style="margin-top:6px">پیمائش یوں بھی لکھ سکتے ہیں: <b>30'6"</b> یا <b>30 فٹ 6 انچ</b> یا صرف <b>30.5</b> — جو سمجھا جائے گا، وہ خلاصے میں «پیمائش کی تشریح» میں دکھا دیا جائے گا، خاموشی سے کبھی نہیں بدلا جائے گا۔</p>
     <div class="grid" style="margin-top:8px">
-      <label class="f">سڑک کی چوڑائی (فٹ)<input type="number" inputmode="decimal" id="f_street" value="20" min="0" max="100"></label>
+      <label class="f">سڑک کی چوڑائی (فٹ)<input type="text" inputmode="decimal" id="f_street" value="20" min="0" max="100"></label>
       <label class="f">منزلیں<select id="f_floors"><option value="1">ایک منزل</option><option value="2" selected>دو منزلیں</option></select></label>
     </div>
     <div class="grid" style="margin-top:8px">
@@ -519,12 +520,48 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     $('f_beds').value = p.beds; $('f_baths').value = p.baths; $('f_drawing').checked = p.drawing; $('f_porch').checked = p.porch; $('f_study').checked = p.study; $('f_basement').checked = p.basement;
     toast('نمونہ بھر دیا گیا — اب «نقشہ بنائیں» دبائیں');
   });
+  // Flexible measurement entry (UX test #7): accepts 30 · 30.5 · 30'6" ·
+  // 30' 6 · 30 6 · 30 فٹ 6 انچ · Urdu/Arabic digits. The interpretation is
+  // NEVER silent — ft/in readings and the ambiguous one-decimal case are
+  // recorded in MEAS_NOTES and shown in the summary.
+  let MEAS_NOTES = [];
+  function parseMeas(raw, label, silent){
+    if(raw == null) return NaN;
+    const s = String(raw).trim()
+      .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
+      .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)])
+      .replace(/,/g, '.');
+    if(!s) return NaN;
+    let v = NaN, form = 'dec', m;
+    if((m = s.match(/^(\d+(?:\.\d+)?)\s*(?:'|فٹ)\s*(\d+(?:\.\d+)?)\s*(?:"|انچ)?$/))){ v = parseFloat(m[1]) + parseFloat(m[2]) / 12; form = 'ftin'; }
+    else if((m = s.match(/^(\d+(?:\.\d+)?)\s*(?:'|فٹ)$/))){ v = parseFloat(m[1]); form = 'ft'; }
+    else if((m = s.match(/^(\d+)\s+(\d+)$/))){ v = parseFloat(m[1]) + parseFloat(m[2]) / 12; form = 'ftin'; }
+    else v = parseFloat(s);
+    if(isNaN(v)) return NaN;
+    if(!silent && label){
+      if(form === 'ftin') MEAS_NOTES.push(label + ': «' + String(raw).trim() + '» کو ' + (Math.round(v * 100) / 100) + ' فٹ سمجھا گیا (فٹ + انچ)');
+      else if(form === 'dec'){
+        const dm = s.match(/^(\d+)\.(\d)$/);
+        if(dm){
+          const alt = parseInt(dm[1], 10) + parseInt(dm[2], 10) / 12;
+          MEAS_NOTES.push(label + ': «' + s + '» کو اعشاریہ ' + v + ' فٹ سمجھا گیا۔ اگر مطلب ' + dm[1] + ' فٹ ' + dm[2] + ' انچ تھا تو «' + dm[1] + "'" + dm[2] + '"» لکھیں — وہ ' + (Math.round(alt * 100) / 100) + ' فٹ بنتا ہے۔');
+        }
+      }
+    }
+    return v;
+  }
   function readSpec(){
+    MEAS_NOTES = [];
     const num = id => Math.max(0, parseFloat($(id).value) || 0);
+    const meas = (id, label) => {
+      const raw = $(id).value, v = parseMeas(raw, label);
+      if(isNaN(v)){ if(String(raw).trim()) MEAS_NOTES.push(label + ': «' + String(raw).trim() + '» سمجھ نہیں آئی — طے شدہ ناپ لگایا گیا؛ دوبارہ لکھ کر نقشہ پھر بنائیں'); return 0; }
+      return Math.max(0, v);
+    };
     return {
       name: $('f_name').value.trim(), loc: $('f_loc').value.trim(),
-      plot: { front: num('f_front') || 30, back: num('f_back') || 30, left: num('f_left') || 60, right: num('f_right') || 60 },
-      street: num('f_street'),
+      plot: { front: meas('f_front', 'سامنے') || 30, back: meas('f_back', 'پیچھے') || 30, left: meas('f_left', 'بائیں گہرائی') || 60, right: meas('f_right', 'دائیں گہرائی') || 60 },
+      street: meas('f_street', 'سڑک'),
       budget: num('f_budget'), orient: $('f_orient').value,
       floors: +$('f_floors').value, basement: $('f_basement').checked,
       layout: $('f_family').value, mirror: $('f_mirror').checked,
@@ -926,6 +963,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     buildMEP(plan);
     summary(spec);
     buildRoomList(plan);
+    if(window.__PERSIST) window.__PERSIST.save();
     toast('نقشہ بن گیا — گھسیٹ کر گھمائیں، اسکرول سے قریب جائیں، کمرے پر کلک کریں');
   }
   // ---------- furnish v2: ANCHOR placement (production library, frozen rules) ----------
@@ -1051,6 +1089,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   }
   function applyFin(r, key){
     if(!r || r.type === 'court') return;
+    if(window.__PERSIST) window.__PERSIST.pushUndo();
     FIN[roomKey(r)] = key;
     if(r._plate) r._plate.material = key === 'std' ? r._plate.userData.defMat : FLOOR_FIN[key]();
     refreshFinChips(); refreshFinList();
@@ -1485,6 +1524,80 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
     window.__WIZ = { open: open, state: W };
   })();
+  // ---------- project save / restore (UX #20) + undo (UX #6) ----------
+  // A snapshot is everything needed to rebuild the same house on THIS
+  // device: spec (auto or confirmed intake), design state (elevation,
+  // parapet, accent, grade, per-room finishes) and the construction stage
+  // reached. Nothing leaves the browser — localStorage only.
+  let RESTORING = false;
+  (function persistInit(){
+    const KEY = 'bbb-studio-save-v1';
+    const stack = [];
+    function snap(){
+      if(!PLAN || !curSpec) return null;
+      try { return { v: 1, fromPlan: !!PLAN.meta.fromPlan, spec: JSON.parse(JSON.stringify(curSpec)), elev: ELEV, parapet: PARAPET, accent: ACCENT, grade: GRADE, fin: JSON.parse(JSON.stringify(FIN)), stage: state.stage, floor: state.floor, rooms: PLAN.rooms.length, savedAt: Date.now() }; } catch(e){ return null; }
+    }
+    function save(){ const s = snap(); if(s) try { localStorage.setItem(KEY, JSON.stringify(s)); } catch(e){} }
+    function load(){ try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); return s && s.spec ? s : null; } catch(e){ return null; } }
+    function restore(s){
+      if(!s || !s.spec) return false;
+      RESTORING = true;
+      try {
+        ELEV = s.elev || ELEV; PARAPET = s.parapet || PARAPET; ACCENT = s.accent || ACCENT; GRADE = s.grade || GRADE;
+        for(const k of Object.keys(FIN)) delete FIN[k];
+        Object.assign(FIN, s.fin || {});
+        const spec = JSON.parse(JSON.stringify(s.spec));
+        if(s.fromPlan) buildHouse(spec, generateFromRooms(JSON.parse(JSON.stringify(spec))));
+        else buildHouse(spec);
+        for(const r of PLAN.rooms){ const k = FIN[roomKey(r)]; if(k && k !== 'std' && r._plate) r._plate.material = FLOOR_FIN[k](); }
+        if(typeof s.stage === 'number') applyStage(Math.max(1, Math.min(STAGES.length, s.stage)));
+        if(s.floor){ const fb = document.querySelector('[data-fl="' + s.floor + '"]'); if(fb) fb.click(); }
+        summary(curSpec);
+        if(typeof refreshFinChips === 'function') refreshFinChips();
+        save();
+        return true;
+      } catch(e){ return false; } finally { RESTORING = false; }
+    }
+    function pushUndo(){ const s = snap(); if(s){ stack.push(s); if(stack.length > 25) stack.shift(); } refreshUndo(); }
+    function refreshUndo(){ const b = $('mUndo'); if(b){ b.disabled = !stack.length; b.style.opacity = stack.length ? '1' : '.45'; } }
+    // NOTE: the menu section REBUILDS the drawer (innerHTML) later in this
+    // same script pass — anything appended before #mShot exists is wiped.
+    // Mount only after #mShot is present (the CAD module's lesson).
+    (function mountUndo(tries){
+      const drawer = $('menuDrawer');
+      if(drawer && $('mShot') && !$('mUndo')){
+        const b = document.createElement('button');
+        b.id = 'mUndo'; b.textContent = '↩ ایک قدم واپس لے جائیں';
+        b.onclick = () => { const s = stack.pop(); refreshUndo(); if(s && restore(s)) toast('ایک قدم واپس ہو گیا — پچھلی حالت آ گئی'); };
+        drawer.appendChild(b); refreshUndo();
+      } else if(tries > 0) setTimeout(() => mountUndo(tries - 1), 700);
+    })(30);
+    const saved = load();
+    if(saved){
+      const host = $('wizBtn') || $('heroBtn');
+      if(host && host.parentElement){
+        const bar = document.createElement('div');
+        bar.id = 'restoreBar';
+        bar.style.cssText = 'margin-top:8px;background:rgba(61,171,148,.12);border:1px solid #3dab94;border-radius:12px;padding:9px 11px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+        const tx = document.createElement('span');
+        const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString('ur-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+        tx.textContent = '💾 محفوظ شدہ گھر موجود ہے' + (saved.spec.name ? ' — ' + saved.spec.name : '') + (saved.rooms ? ' · ' + saved.rooms + ' کمرے' : '') + (when ? ' · ' + when : '');
+        tx.style.cssText = 'flex:1;font-size:13.5px;color:#EAF3EF;line-height:1.8';
+        const rb = document.createElement('button');
+        rb.textContent = '↩ واپس لائیں';
+        rb.style.cssText = 'background:#3DAB94;color:#0A1A3B;border:0;border-radius:10px;padding:9px 14px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer';
+        rb.onclick = () => { if(restore(load())){ bar.style.display = 'none'; toast('محفوظ شدہ گھر واپس آ گیا'); } };
+        const db = document.createElement('button');
+        db.textContent = 'مٹا دیں';
+        db.style.cssText = 'background:transparent;color:#9db8d6;border:1px solid #2b4d82;border-radius:10px;padding:9px 12px;font-family:inherit;font-size:13px;cursor:pointer';
+        db.onclick = () => { try { localStorage.removeItem(KEY); } catch(e){} bar.style.display = 'none'; };
+        bar.appendChild(tx); bar.appendChild(rb); bar.appendChild(db);
+        host.parentElement.insertBefore(bar, host.nextSibling);
+      }
+    }
+    window.__PERSIST = { save, restore, pushUndo, load, stackDepth: () => stack.length };
+  })();
+
   // ---------- CAD sheet download (in-browser DXF, 7 Nov 2026) ----------
   // The offline pipeline (cad_export.js + cad_sheet.py) as a client-side port:
   // same plan (the live, already-trimmed PLAN), same sheet discipline, written
@@ -2083,10 +2196,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   drawer.querySelectorAll('[data-paint]').forEach(b => b.onclick = () => { MAT.plaster.color.set(b.dataset.paint); toast('دیواروں کا رنگ بدل گیا'); });
   drawer.querySelector('#finRoom').addEventListener('change', e => { finSelIdx = parseInt(e.target.value, 10); refreshFinChips(); });
   drawer.querySelectorAll('[data-fin]').forEach(b => b.onclick = () => { if(!PLAN || finSelIdx < 0) return; const r = PLAN.rooms[finSelIdx]; applyFin(r, b.dataset.fin); toast(r.label + ' — فرش: ' + FLOOR_FIN_NAMES[b.dataset.fin]); });
-  drawer.querySelector('#swapGo').onclick = () => { if(!PLAN){ toast('پہلے نقشہ بنائیں'); return; } doSwap(); };
+  drawer.querySelector('#swapGo').onclick = () => { if(!PLAN){ toast('پہلے نقشہ بنائیں'); return; } if(window.__PERSIST) window.__PERSIST.pushUndo(); doSwap(); };
   drawer.querySelectorAll('[data-mep]').forEach(b => b.onclick = () => { MEP[b.dataset.mep] = !MEP[b.dataset.mep]; applyMep(); toast(b.dataset.mep === 'plumb' ? '🚰 پلمبنگ تہہ ' + (MEP.plumb ? 'آن' : 'آف') : '💡 بجلی تہہ ' + (MEP.elec ? 'آن' : 'آف')); });
   // delegated menu buttons (bound after innerHTML)
-  $('sumPanel').addEventListener('click', e => { const b = e.target.closest('[data-grade]'); if(!b) return; GRADE = b.dataset.grade; if(curSpec && PLAN) summary(curSpec); toast('تعمیر کا درجہ: ' + GRADES[GRADE].name + ' (ڈیمو)'); });
+  $('sumPanel').addEventListener('click', e => { const b = e.target.closest('[data-grade]'); if(!b) return; if(window.__PERSIST) window.__PERSIST.pushUndo(); GRADE = b.dataset.grade; if(curSpec && PLAN) summary(curSpec); toast('تعمیر کا درجہ: ' + GRADES[GRADE].name + ' (ڈیمو)'); });
   drawer.querySelector('#mStages').onclick = () => stageMode(true);
   drawer.querySelector('#mSummary').onclick = () => { $('sumPanel').style.display = $('sumPanel').style.display === 'block' ? 'none' : 'block'; };
   drawer.querySelector('#mNew').onclick = () => { $('app').style.display = 'none'; $('intake').style.display = 'block'; $('menuBtn').style.display = 'none'; $('modeGrp').style.display = 'none'; $('floorGrp').style.display = 'none'; $('labels').style.display = 'none'; $('sumPanel').style.display = 'none'; stageMode(false); };
@@ -2189,6 +2302,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const gb = [Math.round(m.greyBand[0] * GF / 10000) * 10000, Math.round(m.greyBand[1] * GF / 10000) * 10000];
     $('sumPanel').innerHTML = '<b style="font-size:17px">📋 خلاصہ</b>' + (spec.name ? ' — ' + spec.name : '') + (spec.loc ? ' · ' + spec.loc : '')
       + '<br>پلاٹ: ' + spec.plot.front + '×' + Math.round(m.depth) + ' فٹ ≈ ' + m.plotArea.toLocaleString() + ' مربع فٹ (' + marla + ' مرلہ) · سڑک ' + spec.street + ' فٹ'
+      + (MEAS_NOTES.length ? '<br>📏 <b>پیمائش کی تشریح:</b> ' + MEAS_NOTES.join(' · ') : '')
       + (m.variant ? '<br>نقشے کا آپشن: <b>' + m.variant + ' — ' + VARIANT_NAMES[m.variant] + '</b> <span style="color:#9db8d6;font-size:12.5px">(اوپر والے بٹنوں سے آپشن بدل کر فرق دیکھیں)</span>' : '')
       + (m.layout ? '<br>ترتیب (فیملی): <b>' + FAMILY_NAMES[m.layout] + '</b>' + (m.mirror ? ' · <b>آئینہ (الٹا) نقشہ</b>' : '') + ' <span style="color:#9db8d6;font-size:12.5px">(ترتیب بدلنے کے لیے فارم سے نیا نقشہ بنائیں)</span>' : '')
       + ((MEP.plumb || MEP.elec) ? '<br>🔌 اسکیمیٹک تہیں آن: <b>' + [MEP.plumb ? 'پلمبنگ (' + MEP_COUNT.plumb + ' پوائنٹ)' : '', MEP.elec ? 'بجلی (' + MEP_COUNT.elec + ' پوائنٹ)' : ''].filter(Boolean).join(' · ') + '</b> — ' + MEP_NOTE : '')
@@ -2345,7 +2459,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       b.dataset.v = v;
       b.textContent = v + ' — ' + VARIANT_NAMES[v];
       b.style.cssText = 'border:1px solid #2b4d82;border-radius:999px;padding:6px 13px;font-family:inherit;font-size:13.5px;cursor:pointer;white-space:nowrap;background:#12305e;color:#EAF3EF';
-      b.onclick = () => { if(lastAutoSpec){ lastAutoSpec.variant = v; buildHouse(lastAutoSpec); } };
+      b.onclick = () => { if(lastAutoSpec){ if(window.__PERSIST) window.__PERSIST.pushUndo(); lastAutoSpec.variant = v; buildHouse(lastAutoSpec); } };
       bar.appendChild(b);
     }
     designBarsWrap().appendChild(bar);
@@ -2370,21 +2484,21 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     for(const v of ['modern', 'classic', 'kashmiri']){
       const b = document.createElement('button');
       b.dataset.elev = v; b.textContent = ELEV_NAMES[v]; b.style.cssText = chipCss;
-      b.onclick = () => { ELEV = v; applyElev(); toast('باہر کی لک: ' + ELEV_NAMES[v]); };
+      b.onclick = () => { if(window.__PERSIST) window.__PERSIST.pushUndo(); ELEV = v; applyElev(); toast('باہر کی لک: ' + ELEV_NAMES[v]); };
       r1.appendChild(b);
     }
     const r2 = mkRow('پیراپٹ:');
     for(const v of ['cap', 'cornice', 'merlon']){
       const b = document.createElement('button');
       b.dataset.parapet = v; b.textContent = PARAPET_NAMES[v]; b.style.cssText = chipCss;
-      b.onclick = () => { PARAPET = v; applyElev(); toast('پیراپٹ: ' + PARAPET_NAMES[v]); };
+      b.onclick = () => { if(window.__PERSIST) window.__PERSIST.pushUndo(); PARAPET = v; applyElev(); toast('پیراپٹ: ' + PARAPET_NAMES[v]); };
       r2.appendChild(b);
     }
     const r3 = mkRow('اگلا لہجہ:');
     for(const v of ['none', 'strip', 'frame']){
       const b = document.createElement('button');
       b.dataset.accent = v; b.textContent = ACCENT_NAMES[v]; b.style.cssText = chipCss;
-      b.onclick = () => { ACCENT = v; applyElev(); toast('اگلا لہجہ: ' + ACCENT_NAMES[v]); };
+      b.onclick = () => { if(window.__PERSIST) window.__PERSIST.pushUndo(); ACCENT = v; applyElev(); toast('اگلا لہجہ: ' + ACCENT_NAMES[v]); };
       r3.appendChild(b);
     }
     designBarsWrap().appendChild(bar);
@@ -2463,8 +2577,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const sets = readRoomSets();
     let n = 0, area = 0;
     for(const k in sets) for(const r of sets[k]){ n++; area += r.w * r.d; }
-    const front = parseFloat($('f_front').value) || 30, back = parseFloat($('f_back').value) || 30;
-    const depth = ((parseFloat($('f_left').value) || 60) + (parseFloat($('f_right').value) || 60)) / 2;
+    const pm = (id, dft) => { const v = parseMeas($(id).value, null, true); return isNaN(v) ? dft : v; };
+    const front = pm('f_front', 30), back = pm('f_back', 30);
+    const depth = (pm('f_left', 60) + pm('f_right', 60)) / 2;
     const minW = Math.min(front, back), gally = minW >= 34 ? 3.5 : 2.5;
     const env = (minW - 2 * gally) * (depth - ($('f_porch').checked ? 13 : 7) - 6);
     const levels = Object.keys(sets).length || 1;
@@ -2485,6 +2600,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   $('p_confirm').addEventListener('change', gatePlan);
   $('p_by').addEventListener('input', gatePlan);
   $('buildBtn2').onclick = () => {
+    if(window.__PERSIST) window.__PERSIST.pushUndo();
     const spec = readSpec();
     spec.basement = $('p_basement').checked;
     spec.roomSets = readRoomSets();
@@ -2504,6 +2620,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   };
   // ---------- build trigger ----------
   $('buildBtn').onclick = () => {
+    if(window.__PERSIST) window.__PERSIST.pushUndo();
     const spec = readSpec();
     $('intake').style.display = 'none'; $('app').style.display = 'block';
     $('menuBtn').style.display = ''; $('modeGrp').style.display = ''; $('floorGrp').style.display = ''; $('labels').style.display = '';
