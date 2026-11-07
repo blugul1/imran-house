@@ -1212,7 +1212,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const SBRICK = { groups: {}, lastStage: -1, anim: null };
   const SBRICK_DUR = REDUCED ? 0 : 1500; // play mode advances every 1700 ms — finish inside the stage; 0 = instant under reduced motion
   // Adaptive quality (pattern sheet rule 11): weak hardware lays longer bricks (half the instances)
-  const SBRICK_LEN = (((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 2) ? 1.5 : 0.75);
+  const SBRICK_LEN = 0.75; /* MAX BUILD (owner order 2026-11-08): full brick density on every device */
   SBRICK.len = SBRICK_LEN;
   function sbrickTexture(){
     const c = document.createElement('canvas'); c.width = c.height = 128;
