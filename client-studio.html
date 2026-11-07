@@ -85,25 +85,25 @@
   </fieldset>
   <fieldset><legend>📐 پلاٹ کی پیمائش (فٹ)</legend>
     <div class="grid">
-      <label class="f">سامنے — سڑک والی سمت<input type="number" id="f_front" value="40" min="15" max="200"></label>
-      <label class="f">پیچھے<input type="number" id="f_back" value="40" min="15" max="200"></label>
-      <label class="f">دائیں جانب گہرائی<input type="number" id="f_right" value="75" min="20" max="300"></label>
-      <label class="f">بائیں جانب گہرائی<input type="number" id="f_left" value="75" min="20" max="300"></label>
+      <label class="f">سامنے — سڑک والی سمت<input type="number" inputmode="decimal" id="f_front" value="40" min="15" max="200"></label>
+      <label class="f">پیچھے<input type="number" inputmode="decimal" id="f_back" value="40" min="15" max="200"></label>
+      <label class="f">دائیں جانب گہرائی<input type="number" inputmode="decimal" id="f_right" value="75" min="20" max="300"></label>
+      <label class="f">بائیں جانب گہرائی<input type="number" inputmode="decimal" id="f_left" value="75" min="20" max="300"></label>
     </div>
     <div class="grid" style="margin-top:8px">
-      <label class="f">سڑک کی چوڑائی (فٹ)<input type="number" id="f_street" value="20" min="0" max="100"></label>
+      <label class="f">سڑک کی چوڑائی (فٹ)<input type="number" inputmode="decimal" id="f_street" value="20" min="0" max="100"></label>
       <label class="f">منزلیں<select id="f_floors"><option value="1">ایک منزل</option><option value="2" selected>دو منزلیں</option></select></label>
     </div>
     <div class="grid" style="margin-top:8px">
       <label class="f">سڑک کس سمت ہے؟<select id="f_orient"><option value="">نہیں جانتا / فرق نہیں</option><option value="E">مشرق</option><option value="W">مغرب</option><option value="S">جنوب</option><option value="N">شمال</option></select></label>
-      <label class="f">کل بجٹ (لاکھ روپے — اختیاری)<input type="number" id="f_budget" value="" min="0" max="5000" placeholder="مثلاً 85"></label>
+      <label class="f">کل بجٹ (لاکھ روپے — اختیاری)<input type="number" inputmode="decimal" id="f_budget" value="" min="0" max="5000" placeholder="مثلاً 85"></label>
     </div>
   </fieldset>
   <fieldset><legend>👨‍👩‍👧 گھر والے</legend>
     <div class="grid3">
-      <label class="f">بالغ افراد<input type="number" id="f_adults" value="4" min="0" max="30"></label>
-      <label class="f">بچے<input type="number" id="f_children" value="3" min="0" max="30"></label>
-      <label class="f">بزرگ<input type="number" id="f_elders" value="0" min="0" max="10"></label>
+      <label class="f">بالغ افراد<input type="number" inputmode="numeric" id="f_adults" value="4" min="0" max="30"></label>
+      <label class="f">بچے<input type="number" inputmode="numeric" id="f_children" value="3" min="0" max="30"></label>
+      <label class="f">بزرگ<input type="number" inputmode="numeric" id="f_elders" value="0" min="0" max="10"></label>
     </div>
   </fieldset>
   <div id="autoWrap">
@@ -1150,6 +1150,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   // the boxes back (they carry the plaster/paint swap). Small segments stay boxes.
   const SBRICK = { groups: {}, lastStage: -1, anim: null };
   const SBRICK_DUR = 1500; // play mode advances every 1700 ms — finish inside the stage
+  // Adaptive quality (pattern sheet rule 11): weak hardware lays longer bricks (half the instances)
+  const SBRICK_LEN = (((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 2) ? 1.5 : 0.75);
+  SBRICK.len = SBRICK_LEN;
   function sbrickTexture(){
     const c = document.createElement('canvas'); c.width = c.height = 128;
     const x = c.getContext('2d');
@@ -1179,7 +1182,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         const p = m.geometry.parameters, w = p.width, h = p.height, d = p.depth;
         const alongX = w >= d, L = alongX ? w : d, T = alongX ? d : w;
         const courses = Math.max(1, Math.round(h / 0.25)), ch = h / courses;
-        const nB = Math.max(1, Math.round(L / 0.75)), bl = L / nB;
+        const nB = Math.max(1, Math.round(L / SBRICK_LEN)), bl = L / nB;
         for(let c = 0; c < courses; c++){
           const y = m.position.y - h / 2 + ch * (c + 0.5), spans = [];
           if(c % 2 === 0){ for(let i = 0; i < nB; i++) spans.push([i * bl, bl]); }
@@ -1807,8 +1810,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const t = PTYPES.find(x => x[0] === type) || PTYPES[0];
     const div = document.createElement('div'); div.className = 'prow';
     div.innerHTML = '<label class="f">کمرہ<select class="p-type">' + PTYPES.map(x => '<option value="' + x[0] + '"' + (x[0] === type ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label>'
-      + '<label class="f">لمبائی (فٹ)<input type="number" class="p-w" value="' + t[2] + '" min="2" max="80" step="0.5"></label>'
-      + '<label class="f">گہرائی (فٹ)<input type="number" class="p-d" value="' + t[3] + '" min="2" max="80" step="0.5"></label>'
+      + '<label class="f">لمبائی (فٹ)<input type="number" inputmode="decimal" class="p-w" value="' + t[2] + '" min="2" max="80" step="0.5"></label>'
+      + '<label class="f">گہرائی (فٹ)<input type="number" inputmode="decimal" class="p-d" value="' + t[3] + '" min="2" max="80" step="0.5"></label>'
       + '<button type="button" class="p-del" title="حذف">✕</button>';
     div.querySelector('.p-del').onclick = () => { div.remove(); gatePlan(); };
     div.querySelector('.p-type').onchange = e => { const nt = PTYPES.find(x => x[0] === e.target.value); div.querySelector('.p-w').value = nt[2]; div.querySelector('.p-d').value = nt[3]; gatePlan(); };

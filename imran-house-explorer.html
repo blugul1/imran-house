@@ -3758,6 +3758,11 @@ buildFrame();
 
 const BRICKSYS = { groups: {}, lastN: -1, anim: null };
 const BRICK_DUR = 2100; // ms to raise one floor-half, block by block
+// Adaptive quality (pattern sheet rule 11): weak hardware (few cores / little RAM)
+// lays LONGER bricks — half the instances, same honest look from any normal distance.
+const WEAK_HW = ((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 2);
+const BRICK_LEN = WEAK_HW ? 1.5 : 0.75;
+BRICKSYS.len = BRICK_LEN;
 
 function brickTexture(){
   const c = document.createElement('canvas'); c.width = c.height = 128;
@@ -3788,7 +3793,7 @@ function buildBricks(){
         const L = alongX ? w : d, T = alongX ? d : w;
         const courses = Math.max(1, Math.round(h / 0.25));
         const ch = h / courses;
-        const nB = Math.max(1, Math.round(L / 0.75));
+        const nB = Math.max(1, Math.round(L / BRICK_LEN));
         const bl = L / nB;
         for(let c = 0; c < courses; c++){
           const y = m.position.y - h / 2 + ch * (c + 0.5);
