@@ -909,6 +909,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     if(!hasB && state.floor === 'basement'){ state.floor = 'ground'; document.querySelectorAll('[data-fl]').forEach(x => x.classList.toggle('on', x.dataset.fl === 'ground')); }
     applyStage(STAGES.length);
     applyFloor();
+    buildBricks();
     buildMEP(plan);
     summary(spec);
     buildRoomList(plan);
@@ -1143,6 +1144,95 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   $('stNext').onclick = () => applyStage(Math.min(STAGES.length, state.stage + 1));
   $('stExit').onclick = () => { clearInterval(playTimer); playTimer = null; $('stPlay').textContent = '▶ چلائیں'; stageMode(false); };
   $('stPlay').onclick = () => { if(playTimer){ clearInterval(playTimer); playTimer = null; $('stPlay').textContent = '▶ چلائیں'; } else { if(state.stage >= STAGES.length) applyStage(1); playTimer = setInterval(() => { if(state.stage >= STAGES.length){ clearInterval(playTimer); playTimer = null; $('stPlay').textContent = '▶ چلائیں'; return; } applyStage(state.stage + 1); }, 1700); $('stPlay').textContent = '⏸ روکیں'; } };
+  // ---------- Minecraft-style brick-by-brick walls (owner's order 7 Nov 2026, Explorer pattern) ----------
+  // During a floor's wall stage, the plain wall boxes step aside and individual bricks
+  // (InstancedMesh) rise course by course, sweeping along the walls. Next stage brings
+  // the boxes back (they carry the plaster/paint swap). Small segments stay boxes.
+  const SBRICK = { groups: {}, lastStage: -1, anim: null };
+  const SBRICK_DUR = 1500; // play mode advances every 1700 ms — finish inside the stage
+  function sbrickTexture(){
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d');
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, 128, 128);
+    const gr = x.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, 'rgba(0,0,0,0.10)'); gr.addColorStop(0.5, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.14)');
+    x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+    x.strokeStyle = '#43301f'; x.lineWidth = 19; x.strokeRect(0, 0, 128, 128);
+    x.strokeStyle = 'rgba(255,235,220,0.30)'; x.lineWidth = 3; x.strokeRect(13, 13, 102, 102);
+    return new THREE.CanvasTexture(c);
+  }
+  function buildBricks(){
+    SBRICK.groups = {}; SBRICK.anim = null; SBRICK.lastStage = -1;
+    if(!HOUSE) return;
+    const byStage = {};
+    HOUSE.traverse(m => {
+      if(!m.userData.isWall || !m.geometry || !m.geometry.parameters) return;
+      const p = m.geometry.parameters;
+      if(Math.min(p.width, p.depth) < 0.5 || p.height < 0.75) return;
+      (byStage[m.userData.st] = byStage[m.userData.st] || []).push(m);
+    });
+    const tex = sbrickTexture();
+    for(const st in byStage){
+      const meshes = byStage[st], bricks = [];
+      for(const m of meshes){
+        const p = m.geometry.parameters, w = p.width, h = p.height, d = p.depth;
+        const alongX = w >= d, L = alongX ? w : d, T = alongX ? d : w;
+        const courses = Math.max(1, Math.round(h / 0.25)), ch = h / courses;
+        const nB = Math.max(1, Math.round(L / 0.75)), bl = L / nB;
+        for(let c = 0; c < courses; c++){
+          const y = m.position.y - h / 2 + ch * (c + 0.5), spans = [];
+          if(c % 2 === 0){ for(let i = 0; i < nB; i++) spans.push([i * bl, bl]); }
+          else { spans.push([0, bl / 2]); for(let i = 0; i < nB - 1; i++) spans.push([bl / 2 + i * bl, bl]); spans.push([L - bl / 2, bl / 2]); }
+          for(const sp of spans){
+            const along = -L / 2 + sp[0] + sp[1] / 2;
+            bricks.push({ course: Math.round(y * 100), sweep: (alongX ? m.position.x + along : m.position.x) + (alongX ? m.position.z : m.position.z + along),
+              x: alongX ? m.position.x + along : m.position.x, y: y, z: alongX ? m.position.z : m.position.z + along,
+              sx: alongX ? sp[1] : T, sy: ch, sz: alongX ? T : sp[1] });
+          }
+        }
+      }
+      if(!bricks.length) continue;
+      bricks.sort((a, b) => (a.course - b.course) || (a.sweep - b.sweep));
+      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: tex }), bricks.length);
+      const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), col = new THREE.Color();
+      bricks.forEach((b, i) => {
+        P.set(b.x, b.y, b.z); S.set(b.sx, b.sy, b.sz); M4.compose(P, Q, S); im.setMatrixAt(i, M4);
+        col.setHex(0x9e5a38).offsetHSL((Math.random() - 0.5) * 0.025, (Math.random() - 0.5) * 0.06, (Math.random() - 0.5) * 0.045);
+        im.setColorAt(i, col);
+      });
+      im.count = 0; im.visible = false; im.frustumCulled = false;
+      im.instanceMatrix.needsUpdate = true;
+      if(im.instanceColor) im.instanceColor.needsUpdate = true;
+      HOUSE.add(im);
+      SBRICK.groups[st] = { mesh: im, total: bricks.length, stage: +st, covered: meshes, band: bandOf(meshes[0]) };
+    }
+  }
+  function sbrickTick(){
+    const a = SBRICK.anim;
+    if(!a) return;
+    const p = Math.min(1, (performance.now() - a.t0) / SBRICK_DUR);
+    a.g.mesh.count = Math.floor(a.g.total * p);
+    if(p < 1) requestAnimationFrame(sbrickTick);
+    else SBRICK.anim = null;
+  }
+  const _applyStageBrick = applyStage;
+  applyStage = function(n){
+    _applyStageBrick(n);
+    for(const st in SBRICK.groups){
+      const g = SBRICK.groups[st];
+      const bandOK = state.floor === 'all' || state.floor === g.band;
+      if(state.staging && n === g.stage && bandOK){
+        g.mesh.visible = true;
+        g.covered.forEach(m => { m.visible = false; });
+        if(SBRICK.lastStage !== n){ g.mesh.count = 0; SBRICK.anim = { g: g, t0: performance.now() }; requestAnimationFrame(sbrickTick); }
+      } else {
+        g.mesh.visible = false;
+        if(SBRICK.anim && SBRICK.anim.g === g) SBRICK.anim = null;
+      }
+    }
+    SBRICK.lastStage = n;
+  };
+  window.__SBRICK = SBRICK;
   // ---------- menu ----------
   const drawer = $('menuDrawer');
   drawer.innerHTML = '<h4>🏗 تعمیر</h4><button id="mStages">🏗 بنتا ہوا گھر — مراحل</button>'
