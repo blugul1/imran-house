@@ -582,15 +582,46 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const app = $('app');
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; /* GAME MAX: real shadows */
   app.appendChild(renderer.domElement);
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0xdcebf2);
   const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 1500);
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8a97a5, 1.1); scene.add(hemi);
   const dl = new THREE.DirectionalLight(0xffffff, 0.95); dl.position.set(-70, 110, -50); scene.add(dl);
+  dl.castShadow = true; { const SHSZ = (((navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 2) ? 1024 : 2048); dl.shadow.mapSize.set(SHSZ, SHSZ); dl.shadow.camera.left = -100; dl.shadow.camera.right = 100; dl.shadow.camera.top = 100; dl.shadow.camera.bottom = -100; dl.shadow.camera.near = 10; dl.shadow.camera.far = 340; dl.shadow.bias = -0.0006; dl.shadow.normalBias = 0.03; } /* GAME MAX: sun shadow camera */
   const M = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .92 }, o || {}));
   const SOILM = M(0x4a3826, { transparent: true });
   const MAT = { conc: M(0x9a968c), brick: M(0x9e5a38), plaster: M(0xe9e2d2), wood: M(0x8a6844), wood2: M(0x6e4f30), fab: M(0x7a9bb5), fab2: M(0xb56a5a), white: M(0xf2efe8), glass: M(0x86b7cc, { transparent: true, opacity: .55 }), soil: M(0x4a3826), green: M(0x5d8a4d), dark: M(0x2e2a26), elevDark: M(0x2e3138), elevCream: M(0xf3e5c3), mepP: M(0x2f7fd0, { emissive: 0x144a7a, roughness: .5 }), mepE: M(0xf2b13c, { emissive: 0x7a5410, roughness: .5 }) };
   const TINT = { living: 0xd9c6a5, lounge: 0xd9c6a5, drawing: 0xd3bf9d, bed: 0xc4cfdd, bath: 0x9fc4bd, kitchen: 0xd8d2c4, hall: 0xcfc4ae, circ: 0xcfc4ae, store: 0xb9ac93, study: 0xc9d2bd, court: 0x7fae62 };
+  /* ==== GAME MAX: ENVIRONMENT (fog, ground, street, trees, hills) — ambience only, never part of the measured plan ==== */
+  const ENVG = new THREE.Group(); scene.add(ENVG);
+  try {
+    scene.fog = new THREE.Fog(0xdcebf2, 215, 580);
+    const gnd = new THREE.Mesh(new THREE.CircleGeometry(620, 44), M(0x86a065, { roughness: 1 })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -0.07; gnd.receiveShadow = true; ENVG.add(gnd);
+    const rdG = new THREE.Group(); ENVG.add(rdG);
+    const fpath = new THREE.Mesh(new THREE.BoxGeometry(760, 0.07, 4.5), M(0xb7ae9c, { roughness: 1 })); fpath.position.set(0, -0.02, -3.6); fpath.receiveShadow = true; rdG.add(fpath);
+    const road = new THREE.Mesh(new THREE.BoxGeometry(760, 0.06, 18), M(0x504d48, { roughness: 1 })); road.position.set(0, -0.03, -15.5); road.receiveShadow = true; rdG.add(road);
+    const leafM = M(0x5d8a4d, { roughness: 1 }), leaf2 = M(0x6f9c57, { roughness: 1 }), trunkM = M(0x6e4f30, { roughness: 1 });
+    const tspots = [[-88,-30],[-98,28],[-80,76],[88,-26],[100,36],[82,86],[-42,106],[48,110],[122,-72],[-126,-66],[132,68],[-134,42],[26,-118],[-32,-116],[150,-6],[-152,-10]];
+    for (const [tx, tz] of tspots) {
+      const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 3.6, 6), trunkM); tr.position.set(tx, 1.8, tz); tr.castShadow = true; ENVG.add(tr);
+      const c1 = new THREE.Mesh(new THREE.SphereGeometry(2.2, 8, 6), leafM); c1.position.set(tx, 5.1, tz); c1.castShadow = true; ENVG.add(c1);
+      const c2 = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 6), leaf2); c2.position.set(tx + 1.1, 6.2, tz + 0.4); c2.castShadow = true; ENVG.add(c2);
+    }
+    const hillM = M(0x9db08a, { roughness: 1 });
+    for (const [hx, hz, hr, hh] of [[-330,-260,150,44],[60,-390,190,58],[330,-240,140,40],[-380,120,170,50],[390,140,160,46],[80,400,200,54],[-260,330,150,42]]) {
+      const h = new THREE.Mesh(new THREE.ConeGeometry(hr, hh, 7), hillM); h.position.set(hx, hh / 2 - 2, hz); ENVG.add(h);
+    }
+    window.__ENVG = ENVG;
+    setInterval(function () {
+      try {
+        const S = window.__STUDIO;
+        if (S && S.PLAN && S.PLAN.meta) rdG.position.z = -(S.PLAN.meta.depth / 2);
+        ENVG.visible = !(typeof state !== 'undefined' && state && state.floor === 'basement');
+        if (scene.fog && typeof state !== 'undefined' && state) scene.fog.color.set(state.dusk ? 0x141f38 : 0xdcebf2);
+      } catch (e) {}
+    }, 700);
+  } catch (e) { /* environment is ambience; never a blocker */ }
   // === Furnished register v2 (same library as the Explorer; owner references 1 Nov 2026) ===
   function walnutTextureS(){
     const c = document.createElement('canvas'); c.width = c.height = 256; const v = c.getContext('2d');
@@ -689,7 +720,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   const FH = 11;
   const BASES = { basement: -FH, ground: 0, first: FH };
   const MX = x => x - PLAN.meta.plotW / 2, MZ = z => z - PLAN.meta.depth / 2;
-  function B(parent, x, y, z, w, h, d, mat, st){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if(st != null) m.userData.st = st; parent.add(m); return m; }
+  function B(parent, x, y, z, w, h, d, mat, st){ const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); if(st != null) m.userData.st = st; if(!(mat && mat.transparent)){ m.castShadow = true; m.receiveShadow = true; } parent.add(m); return m; } /* GAME MAX: B() casts/receives shadows (transparent mats exempt) */
   // ---------- build the house ----------
   const VARIANT_NAMES = { A: 'معیاری', B: 'بڑے کمرے', C: 'بڑا صحن' };
   const FAMILY_NAMES = { guest: 'مہمان آگے', family: 'خاندان آگے', court: 'صحن محور' };
@@ -791,7 +822,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       const shp = new THREE.Shape(); shp.moveTo(poly[0].x, -poly[0].z);
       for(let i = 1; i < poly.length; i++) shp.lineTo(poly[i].x, -poly[i].z);
       shp.closePath();
-      const pg = new THREE.Mesh(new THREE.ShapeGeometry(shp), M(0xcac2ae));
+      const pg = new THREE.Mesh(new THREE.ShapeGeometry(shp), M(0xcac2ae)); pg.receiveShadow = true; /* GAME MAX: plot plate receives shadows */
       pg.rotation.x = -Math.PI / 2; pg.position.y = 0.05; pg.userData.st = 1; HOUSE.add(pg);
     }
     function bwall(p, q, gapC, gapW){
@@ -1258,7 +1289,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       }
       if(!bricks.length) continue;
       bricks.sort((a, b) => (a.course - b.course) || (a.sweep - b.sweep));
-      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: tex }), bricks.length);
+      const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: tex }), bricks.length); im.castShadow = true; im.receiveShadow = true; /* GAME MAX: bricks cast shadows */
       const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), P = new THREE.Vector3(), col = new THREE.Color();
       bricks.forEach((b, i) => {
         P.set(b.x, b.y, b.z); S.set(b.sx, b.sy, b.sz); M4.compose(P, Q, S); im.setMatrixAt(i, M4);
