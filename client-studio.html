@@ -403,6 +403,7 @@ function generateFromRooms(spec){
       counts[inp.type] = (counts[inp.type] || 0) + 1;
       const label = (TYPE_LABELS[inp.type] || inp.type) + (list.filter(x => x.type === inp.type).length > 1 ? ' ' + counts[inp.type] : '');
       const r = room(fk, inp.type, label, cx, cz, w, d, cx + w / 2 <= (x0 + x1) / 2 ? 'W' : 'E');
+      r.reno = inp.reno || 'keep'; // renovation mode: keep / demolish / new (intake table marks)
       r._rowFirst = rowRooms.length === 0; r._cz = cz;
       rowRooms.push(r); cx += w; rowD = Math.max(rowD, d);
     }
@@ -2200,6 +2201,25 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       + (m.fromPlan ? '<br>ماخذ: <b>کلائنٹ کا اپنا نقشہ</b> — تصدیق کنندہ: ' + (m.confirmedBy || '—') + (m.confirmedAt ? ' · ' + m.confirmedAt : '') : '')
       + '<br>اسٹیک سیدھ: <span class="ok">✓ ' + m.stackOk + '/' + m.stackN + ' باتھ اوپر نیچے ایک لائن پر</span>'
       + (m.errs.length ? '<br><span class="bad">جانچ: ' + m.errs.join(' · ') + '</span>' : '<br><span class="ok">جانچ: کوئی اوورلیپ نہیں، سب کمرے حدود کے اندر ✓</span>')
+      + (() => {
+          // Renovation section (master prompt Step 5): only for intake plans
+          // whose table carries keep/demolish/new marks. New-work band uses the
+          // SAME grey rates as the main estimate below; demolition carries NO
+          // invented rate — its cost is a site quote, stated plainly.
+          if(!m.fromPlan) return '';
+          const marked = p.rooms.filter(r => r.reno);
+          if(!marked.some(r => r.reno !== 'keep')) return '';
+          const area = rs => Math.round(rs.reduce((a, r) => a + r.w * r.d, 0));
+          const keep = marked.filter(r => r.reno === 'keep'), demo = marked.filter(r => r.reno === 'demolish'), newR = marked.filter(r => r.reno === 'new');
+          let lo = 0, hi = 0;
+          for(const r of newR){ const rt = r.fk === 'basement' ? [4000, 4600] : [3000, 3300]; lo += r.w * r.d * rt[0]; hi += r.w * r.d * rt[1]; }
+          lo = Math.round(lo * GF / 1000) * 1000; hi = Math.round(hi * GF / 1000) * 1000;
+          return '<br><br><b>🔨 تزئین و مرمت — پہلے / بعد:</b>'
+            + '<br>🟢 رکھے گئے: ' + keep.length + ' کمرے (≈' + area(keep).toLocaleString() + ' مربع فٹ) · 🔴 گرائے جانے والے: ' + demo.length + ' (≈' + area(demo).toLocaleString() + ' مربع فٹ) · 🟡 نئے: ' + newR.length + ' (≈' + area(newR).toLocaleString() + ' مربع فٹ)'
+            + '<br>پہلے: ' + (keep.length + demo.length) + ' کمرے · بعد میں: ' + (keep.length + newR.length) + ' کمرے'
+            + (newR.length ? '<br><b>نئے حصے کا گرے تخمینہ بینڈ: روپے ' + (lo / 1e5).toFixed(1) + ' – ' + (hi / 1e5).toFixed(1) + ' لاکھ</b> <span style="color:#9db8d6;font-size:12.5px">(تخمینہ بینڈ، ڈیمو ریٹ — وہی شرحیں جو نیچے گرے بینڈ میں ہیں' + (GF !== 1 ? '، درجے کا فرق شامل' : '') + ')</span>' : '')
+            + (demo.length ? '<br><span style="color:#9db8d6;font-size:12.5px">گرانے کی لاگت اس بینڈ میں شامل نہیں — وہ مقامی ٹھیکیدار موقع دیکھ کر دے گا؛ یہاں جعلی عدد نہیں لگایا گیا۔</span>' : '');
+        })()
       + '<br><b>QA گیٹ (خودکار جانچ):</b>' + qaCheck(p).map(q => '<br>' + (q.s === 'PASS' ? '<span class="ok">✓</span>' : q.s === 'WARN' ? '<span class="warn">⚠</span>' : '<span class="bad">✗</span>') + ' ' + q.t + ' — <span style="color:#9db8d6;font-size:12.5px">' + q.d + '</span>').join('')
       + m.warnings.map(w => '<br><span class="warn">⚠ ' + w + '</span>').join('')
       + '<br><br><b>تعمیر کا درجہ (ڈیمو):</b> <span style="display:inline-flex;gap:6px;vertical-align:middle">' + Object.keys(GRADES).map(g => '<button data-grade="' + g + '" style="border:1px solid #2b4d82;border-radius:999px;padding:5px 12px;font-family:inherit;font-size:13px;cursor:pointer;background:' + (GRADE === g ? '#3DAB94' : '#12305e') + ';color:' + (GRADE === g ? '#0A1A3B' : '#EAF3EF') + '">' + GRADES[g].name + '</button>').join('') + '</span>'
@@ -2265,6 +2285,12 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       tx.textContent = r.label + ' — ' + w1 + ' × ' + d1 + ' فٹ';
       tx.style.cssText = 'flex:1;font-size:13.5px;line-height:1.8';
       row.appendChild(chip); row.appendChild(tx);
+      if(r.reno && r.reno !== 'keep'){
+        const rc = document.createElement('span');
+        rc.textContent = r.reno === 'demolish' ? '🔴 گرائیں' : '🟡 نیا';
+        rc.style.cssText = 'flex:none;font-size:12px;background:rgba(255,255,255,.08);border:1px solid #2b4d82;border-radius:999px;padding:2px 9px';
+        row.appendChild(rc);
+      }
       row.onclick = () => {
         panel.style.display = 'none';
         const fb = document.querySelector('[data-fl="' + r.fk + '"]');
@@ -2276,6 +2302,17 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         info.style.display = 'block';
       };
       panel.appendChild(row);
+    }
+    // renovation floor tints: demolish reads red, new reads gold on the room's
+    // own floor plate — a marking, not a demolition simulation
+    if(plan.meta.fromPlan){
+      if(!window.__RENO_MAT){
+        window.__RENO_MAT = {
+          demolish: new THREE.MeshStandardMaterial({ color: 0x9c4038, roughness: 0.9, transparent: true, opacity: 0.88 }),
+          new: new THREE.MeshStandardMaterial({ color: 0xC7A252, roughness: 0.85, transparent: true, opacity: 0.92 })
+        };
+      }
+      for(const r of plan.rooms) if(r.reno && r.reno !== 'keep' && r._plate) r._plate.material = window.__RENO_MAT[r.reno];
     }
     window.__ROOMLIST = { count: ordered.length, open: () => { panel.style.display = 'block'; }, close: () => { panel.style.display = 'none'; }, panel };
   }
@@ -2390,6 +2427,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     div.innerHTML = '<label class="f">کمرہ<select class="p-type">' + PTYPES.map(x => '<option value="' + x[0] + '"' + (x[0] === type ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label>'
       + '<label class="f">لمبائی (فٹ)<input type="number" inputmode="decimal" class="p-w" value="' + t[2] + '" min="2" max="80" step="0.5"></label>'
       + '<label class="f">گہرائی (فٹ)<input type="number" inputmode="decimal" class="p-d" value="' + t[3] + '" min="2" max="80" step="0.5"></label>'
+      + '<label class="f">مرمت میں<select class="p-reno"><option value="keep">🟢 رکھیں</option><option value="demolish">🔴 گرائیں</option><option value="new">🟡 نیا بنائیں</option></select></label>'
       + '<button type="button" class="p-del" title="حذف">✕</button>';
     div.querySelector('.p-del').onclick = () => { div.remove(); gatePlan(); };
     div.querySelector('.p-type').onchange = e => { const nt = PTYPES.find(x => x[0] === e.target.value); div.querySelector('.p-w').value = nt[2]; div.querySelector('.p-d').value = nt[3]; gatePlan(); };
@@ -2416,7 +2454,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   function readRoomSets(){
     const sets = {};
     document.querySelectorAll('#p_levels fieldset').forEach(fs => {
-      sets[fs.dataset.fk] = [...fs.querySelectorAll('.prow')].map(r => ({ type: r.querySelector('.p-type').value, w: parseFloat(r.querySelector('.p-w').value) || 0, d: parseFloat(r.querySelector('.p-d').value) || 0 }));
+      sets[fs.dataset.fk] = [...fs.querySelectorAll('.prow')].map(r => ({ type: r.querySelector('.p-type').value, w: parseFloat(r.querySelector('.p-w').value) || 0, d: parseFloat(r.querySelector('.p-d').value) || 0, reno: r.querySelector('.p-reno') ? r.querySelector('.p-reno').value : 'keep' }));
     });
     return sets;
   }
