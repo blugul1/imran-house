@@ -602,8 +602,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const gravelTex = speck('#c9c1ad', ['#b8ae99', '#d6cfbc', '#a99f88'], 750); gravelTex.repeat.set(0.055, 0.055); window.__GRAVEL = gravelTex;
     function skyTex(top, mid, bot) { const c = document.createElement('canvas'); c.width = 4; c.height = 256; const v = c.getContext('2d'); const g = v.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(1, bot); v.fillStyle = g; v.fillRect(0, 0, 4, 256); return new THREE.CanvasTexture(c); }
     const skyDay = skyTex('#5f9bd6', '#a8c8e4', '#e8f1f4'), skyDusk = skyTex('#101c3a', '#33477a', '#141f38');
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(880, 20, 12), new THREE.MeshBasicMaterial({ map: skyDay, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -10; ENVG.add(sky); window.__SKY = sky;
-    const gnd = new THREE.Mesh(new THREE.CircleGeometry(620, 44), M(0xffffff, { roughness: 1, map: lawnTex })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -0.07; gnd.receiveShadow = true; ENVG.add(gnd);
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(880, 20, 12), new THREE.MeshBasicMaterial({ map: skyDay, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -10; sky.userData.keep = true; ENVG.add(sky); window.__SKY = sky;
+    const gnd = new THREE.Mesh(new THREE.CircleGeometry(620, 44), M(0xffffff, { roughness: 1, map: lawnTex })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -0.07; gnd.receiveShadow = true; gnd.userData.keep = true; ENVG.add(gnd);
     const rdG = new THREE.Group(); ENVG.add(rdG);
     const fpath = new THREE.Mesh(new THREE.BoxGeometry(760, 0.07, 4.5), M(0xb7ae9c, { roughness: 1 })); fpath.position.set(0, -0.02, -3.6); fpath.receiveShadow = true; rdG.add(fpath);
     const road = new THREE.Mesh(new THREE.BoxGeometry(760, 0.06, 18), M(0x504d48, { roughness: 1 })); road.position.set(0, -0.03, -15.5); road.receiveShadow = true; rdG.add(road);
@@ -658,6 +658,43 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       };
       requestAnimationFrame(lifeLoop);
     }
+    /* Env merge: static scenery (trees, hills, poles) merged per material —
+       birds, cloths, the road group (it repositions per plot) and sky/ground
+       are never touched. */
+    try {
+      const em = new Map();
+      const eAll = []; ENVG.traverse(m => { if (m.isMesh) eAll.push(m); });
+      for (const m of eAll) {
+        if (m.userData.keep) continue;
+        let bad = false, p = m.parent;
+        while (p && p !== ENVG) { if (p === birdG || p === rdG || cloths.indexOf(p) >= 0) { bad = true; break; } p = p.parent; }
+        if (bad || !m.material || Array.isArray(m.material) || !m.geometry) continue;
+        m.updateWorldMatrix(true, false);
+        const k = m.material.uuid;
+        if (!em.has(k)) em.set(k, { mat: m.material, items: [] });
+        em.get(k).items.push(m);
+      }
+      let envMerged = 0;
+      for (const g of em.values()) {
+        if (g.items.length < 2) continue;
+        const pos = [], nor = [], uv = [];
+        for (const m of g.items) {
+          const geo = m.geometry.clone().toNonIndexed();
+          geo.applyMatrix4(m.matrixWorld);
+          pos.push(...geo.attributes.position.array); nor.push(...geo.attributes.normal.array); uv.push(...geo.attributes.uv.array);
+          geo.dispose(); envMerged++;
+        }
+        const bg2 = new THREE.BufferGeometry();
+        bg2.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        bg2.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+        bg2.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        bg2.computeBoundingSphere();
+        const mm2 = new THREE.Mesh(bg2, g.mat); mm2.castShadow = true; mm2.receiveShadow = true;
+        ENVG.add(mm2);
+        for (const m of g.items) if (m.parent) m.parent.remove(m);
+      }
+      window.__ENVMERGE = envMerged;
+    } catch (e) {}
     window.__ENVG = ENVG;
     /* FPS shadow guard: if a real device cannot hold ~24fps with a plan on screen, sun shadows switch off once (no oscillation). Set window.__NOSHADOWGUARD before load to disable (visual QA). */
     if (!window.__NOSHADOWGUARD) {
@@ -688,6 +725,83 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       } catch (e) {}
     }, 700);
   } catch (e) { /* environment is ambience; never a blocker */ }
+  /* ==== GAME MAX: static geometry merge (draw-call cut) ====
+     Merges box meshes sharing (material, stage, floor band, wall-ness) into
+     one mesh. NEVER touched: slabs/plates, transparent materials,
+     InstancedMesh bricks, onlyStage specials, and anything inside
+     elevation/parapet/accent/MEP groups (visibility-toggled as groups).
+     Walls ARE merged per stage+band: the merged mesh keeps isWall (so the
+     stage material swap still hits it) and SBRICK's covered lists are
+     re-pointed at the merged meshes, so the brick-by-brick animation still
+     hides the solid wall while bricks rise. The merged mesh carries the
+     shared stage tag and its origin Y sits inside the shared band, so
+     bandOf() reads the same band. Picking uses math floor planes: safe. */
+  function mergeStatic() {
+    try {
+      if (!HOUSE || HOUSE.userData.__merged) return;
+      HOUSE.userData.__merged = true;
+      const skipGroups = new Set();
+      try { for (const d of [elevGroups, parapetGroups, accentGroups]) if (d) for (const k in d) { const g = d[k]; if (!g) continue; if (g.isObject3D) skipGroups.add(g); if (g.strip) skipGroups.add(g.strip); if (g.frame) skipGroups.add(g.frame); } } catch (e) {}
+      try { if (typeof mepGroups !== 'undefined' && mepGroups) for (const k in mepGroups) skipGroups.add(mepGroups[k]); } catch (e) {}
+      const all = []; HOUSE.traverse(m => { if (m.isMesh) all.push(m); });
+      const groups = new Map();
+      const wpv = new THREE.Vector3();
+      for (const m of all) {
+        const u = m.userData || {};
+        if (u.st == null || u.onlyStage != null || u.isSlab || u.isPlate) continue;
+        if (m.isInstancedMesh) continue;
+        if (!m.geometry || m.geometry.type !== 'BoxGeometry') continue;
+        if (!m.material || Array.isArray(m.material) || m.material.transparent) continue;
+        let bad = false, p = m.parent;
+        while (p && p !== HOUSE) { if (skipGroups.has(p)) { bad = true; break; } p = p.parent; }
+        if (bad) continue;
+        m.updateWorldMatrix(true, false);
+        wpv.setFromMatrixPosition(m.matrixWorld);
+        const band = wpv.y < -0.5 ? 'b' : (wpv.y < FH - 0.5 ? 'g' : (wpv.y < 2 * FH - 0.5 ? 'f' : 'r'));
+        const key = (u.isWall ? 'W|' : '') + u.st + '|' + band + '|' + m.material.uuid;
+        if (!groups.has(key)) groups.set(key, { mat: m.material, st: u.st, wall: !!u.isWall, items: [] });
+        groups.get(key).items.push(m);
+      }
+      let mergedMeshes = 0, removedMeshes = 0;
+      const wallMergedByStage = {};
+      for (const g of groups.values()) {
+        if (g.items.length < 2) continue;
+        const o = new THREE.Vector3().setFromMatrixPosition(g.items[0].matrixWorld);
+        const pos = [], nor = [], uv = [];
+        const rel = new THREE.Matrix4();
+        for (const m of g.items) {
+          const geo = m.geometry.clone().toNonIndexed();
+          rel.makeTranslation(-o.x, -o.y, -o.z).multiply(m.matrixWorld);
+          geo.applyMatrix4(rel);
+          pos.push(...geo.attributes.position.array); nor.push(...geo.attributes.normal.array); uv.push(...geo.attributes.uv.array);
+          geo.dispose();
+        }
+        const bg = new THREE.BufferGeometry();
+        bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        bg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+        bg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        bg.computeBoundingSphere();
+        const mm = new THREE.Mesh(bg, g.mat);
+        mm.position.copy(o); mm.userData.st = g.st; if (g.wall) mm.userData.isWall = true;
+        mm.castShadow = true; mm.receiveShadow = true;
+        HOUSE.add(mm); mergedMeshes++;
+        if (g.wall) (wallMergedByStage[g.st] = wallMergedByStage[g.st] || []).push(mm);
+        for (const m of g.items) { if (m.parent) m.parent.remove(m); removedMeshes++; }
+      }
+      /* Re-point SBRICK covered lists: detached originals out, merged wall
+         meshes in, still-attached originals (unmerged singles) kept. */
+      try {
+        const SB = window.__SBRICK;
+        if (SB && SB.groups) for (const st in SB.groups) {
+          const g = SB.groups[st];
+          const kept = (g.covered || []).filter(m => m.parent);
+          const extra = wallMergedByStage[st] || wallMergedByStage[+st] || [];
+          g.covered = kept.concat(extra);
+        }
+      } catch (e) {}
+      window.__MERGE = { groups: mergedMeshes, removed: removedMeshes };
+    } catch (e) { /* merge is an optimisation; never a blocker */ }
+  }
   // === Furnished register v2 (same library as the Explorer; owner references 1 Nov 2026) ===
   function walnutTextureS(){
     const c = document.createElement('canvas'); c.width = c.height = 512; const v = c.getContext('2d'); v.scale(2, 2); /* GAME MAX hi-res */
@@ -1066,6 +1180,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     applyStage(STAGES.length);
     applyFloor();
     buildBricks();
+    mergeStatic(); /* GAME MAX: draw-call merge, after bricks, before MEP */
     buildMEP(plan);
     summary(spec);
     buildRoomList(plan);
