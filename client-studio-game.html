@@ -1383,6 +1383,103 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         remove: function (i) { const p = PLACEDL[i]; if (!p) return false; PG.remove(p.g); PLACEDL.splice(i, 1); return true; },
         clear: function () { while (PLACEDL.length) { const p = PLACEDL.pop(); PG.remove(p.g); } }
       };
+      /* ==== GAME: MEP flow (Redstone lesson, owner 9 Nov) ====
+         The schematic runs are chains of small boxes; a soft pulse travels
+         along them (phase from position) so water and electricity read as
+         a FLOWING system, not dead lines — the way redstone teaches circuits
+         by playing. Schematic only; the canonical MEP note still governs.
+         The pulse runs only while an MEP layer is actually visible. */
+      const FLOWSET = [];
+      try {
+        if (mepGroups) {
+          const mkF = function (grp, col) {
+            if (!grp) return;
+            grp.traverse(function (m) {
+              if (!m.isMesh) return;
+              m.material = m.material.clone();
+              if (m.material.emissive) { m.material.emissive.setHex(col); m.material.emissiveIntensity = 0; }
+              FLOWSET.push({ m: m, d: (m.position.x + m.position.z) * 0.32 });
+            });
+          };
+          mkF(mepGroups.plumb, 0x2f7fd0);
+          mkF(mepGroups.elec, 0xffb020);
+        }
+      } catch (e) {}
+      window.__FLOW_IMPL = {
+        tick: function (t) {
+          for (const it of FLOWSET) {
+            let vis = true, n = it.m;
+            while (n && n !== scene) { if (n.visible === false) { vis = false; break; } n = n.parent; }
+            if (!vis) { if (it.m.material.emissiveIntensity) it.m.material.emissiveIntensity = 0; continue; }
+            const p = Math.sin(it.d - t * 2.6);
+            it.m.material.emissiveIntensity = p > 0.55 ? (p - 0.55) * 1.9 : 0;
+          }
+        }
+      };
+      window.__FLOW = { n: FLOWSET.length, lit: function () { let c = 0; for (const it of FLOWSET) if (it.m.material.emissiveIntensity > 0.05) c++; return c; } };
+      /* ==== GAME: keyboard controls (Minecraft map, owner 9 Nov) ====
+         WASD/arrows glide the camera target, Space climbs the stairs to
+         the next floor (Shift+Space down). E / Enter / Esc / R are wired
+         in the game layer (DOM side). One-time wiring; the impl holder is
+         refreshed on every build, like __PLACE_IMPL. */
+      const KEYS_HELD = (window.__KEYS_HELD = window.__KEYS_HELD || {});
+      window.__KEY_IMPL = {
+        step: function (dt) {
+          let f = 0, s = 0;
+          if (KEYS_HELD.KeyW || KEYS_HELD.ArrowUp) f += 1;
+          if (KEYS_HELD.KeyS || KEYS_HELD.ArrowDown) f -= 1;
+          if (KEYS_HELD.KeyD || KEYS_HELD.ArrowRight) s += 1;
+          if (KEYS_HELD.KeyA || KEYS_HELD.ArrowLeft) s -= 1;
+          if (!f && !s) return;
+          const dx = camera.position.x - camTg.x, dz = camera.position.z - camTg.z;
+          const len = Math.hypot(dx, dz) || 1;
+          const fx = -dx / len, fz = -dz / len, rx = -fz, rz = fx;
+          const sp = 17 * dt;
+          camTg.x += (fx * f + rx * s) * sp;
+          camTg.z += (fz * f + rz * s) * sp;
+          const bx = plan.meta.plotW / 2 + 34, bz = plan.meta.depth / 2 + 34;
+          camTg.x = Math.max(-bx, Math.min(bx, camTg.x));
+          camTg.z = Math.max(-bz, Math.min(bz, camTg.z));
+          applyCam();
+        },
+        floor: function (dir) {
+          const order = ['basement', 'ground', 'first'];
+          const avail = order.filter(function (k) { return k !== 'basement' || plan.meta.basement; });
+          let cur = (state.floor && state.floor !== 'all') ? state.floor : 'ground';
+          let i = avail.indexOf(cur); if (i < 0) i = avail.indexOf('ground');
+          const n = Math.max(0, Math.min(avail.length - 1, i + dir));
+          if (avail[n] === cur) return cur;
+          state.floor = avail[n];
+          document.querySelectorAll('[data-fl]').forEach(function (x) { x.classList.toggle('on', x.dataset.fl === avail[n]); });
+          try { applyFloor(); } catch (e) {}
+          camTg.y = (BASES[avail[n]] || 0) + 5; applyCam();
+          return avail[n];
+        }
+      };
+      if (!window.__KEYS_WIRED) {
+        window.__KEYS_WIRED = true;
+        let lastT = 0;
+        const kloop = function (t) {
+          requestAnimationFrame(kloop);
+          const dt = Math.min(0.05, lastT ? (t - lastT) / 1000 : 0.016); lastT = t;
+          const im = window.__KEY_IMPL; if (im) im.step(dt);
+          const fl = window.__FLOW_IMPL; if (fl) fl.tick(t / 1000);
+        };
+        requestAnimationFrame(kloop);
+        window.addEventListener('keydown', function (e) {
+          const tg = e.target;
+          if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable)) return;
+          if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(e.code) >= 0) { KEYS_HELD[e.code] = true; e.preventDefault(); }
+          else if (e.code === 'Space') { e.preventDefault(); const im2 = window.__KEY_IMPL; if (im2 && !e.repeat) im2.floor(e.shiftKey ? -1 : 1); }
+        });
+        window.addEventListener('keyup', function (e) { KEYS_HELD[e.code] = false; });
+        window.addEventListener('blur', function () { for (const k in KEYS_HELD) KEYS_HELD[k] = false; });
+      }
+      window.__KEYS = {
+        held: function () { return Object.keys(KEYS_HELD).filter(function (k) { return KEYS_HELD[k]; }); },
+        cam: function () { return { x: Math.round(camTg.x * 10) / 10, y: Math.round(camTg.y * 10) / 10, z: Math.round(camTg.z * 10) / 10 }; },
+        floor: function () { return state.floor; }
+      };
     } catch (e) {}
     summary(spec);
     buildRoomList(plan);
@@ -3138,6 +3235,15 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#placedBox .plT{font-weight:800;font-size:14px;margin-bottom:5px}' +
     '.plRow{display:flex;align-items:center;gap:8px;background:#fff;border:1.2px solid #e0d3a8;border-radius:9px;padding:6px 9px;margin-bottom:5px;font-size:13.5px}' +
     '.plRow button{margin-inline-start:auto;min-width:44px;min-height:36px;border:0;border-radius:8px;background:#f7e8e4;color:#8e2f26;font-family:inherit;font-weight:700;cursor:pointer}' +
+    '#pbKeys{margin-top:7px;font-size:12.5px;color:#6b6a5e}' +
+    '#keyChip{position:fixed;right:10px;top:196px;z-index:93;min-width:52px;min-height:48px;border-radius:14px;border:1.6px solid #C7A252;background:#FFFBF0;color:#5c4a12;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
+    '#keyCard{position:fixed;inset-inline:14px;top:16%;z-index:120;display:none;background:#FFFBF0;border:2px solid #C7A252;border-radius:16px;box-shadow:0 14px 44px rgba(40,32,6,.35);padding:14px 16px 12px;color:#2b2b26;max-width:430px;margin-inline:auto}' +
+    '#keyCard h3{margin:0 0 8px;font-size:16.5px}' +
+    '#keyCard .kRow{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:14.5px;border-bottom:1px dashed #e3d5a3}' +
+    '#keyCard .kRow:last-of-type{border-bottom:0}' +
+    '#keyCard kbd{background:#0C3B2E;color:#F7F3EA;border-radius:6px;padding:2px 9px;font-family:inherit;font-weight:800;font-size:13.5px;white-space:nowrap}' +
+    '#keyCard .kNote{font-size:12.5px;color:#6b6a5e;margin-top:8px}' +
+    '#keyClose{margin-top:10px;width:100%;min-height:48px;border:0;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer}' +
     '#coordBtn{display:block;width:100%;margin-top:9px;min-height:46px;border:1.4px solid #0C3B2E;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}' +
     '#coordPanel{position:fixed;inset:0;z-index:210;display:none;align-items:center;justify-content:center;background:rgba(20,30,40,.5)}' +
     '#coordPanel .in{background:#FFFBF0;border:2px solid #0C3B2E;border-radius:18px;width:92vw;max-width:352px;max-height:88vh;overflow-y:auto;box-shadow:0 14px 44px rgba(0,0,0,.35);color:#2b2b26}' +
@@ -3472,7 +3578,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   var placeBar = document.createElement('div');
   placeBar.id = 'placeBar';
   placeBar.innerHTML = '<div class="pbT"></div><div class="pbS"></div>' +
-    '<div class="pbBtns"><button id="pbOk" type="button">✓ یہیں لگائیں</button><button id="pbRot" type="button">🔄 گھمائیں</button><button id="pbCancel" type="button">✕ ختم</button></div>';
+    '<div class="pbBtns"><button id="pbOk" type="button">✓ یہیں لگائیں</button><button id="pbRot" type="button">🔄 گھمائیں</button><button id="pbCancel" type="button">✕ ختم</button></div>' +
+    '<div id="pbKeys">⌨️ کی بورڈ: Enter = لگائیں · R = گھمائیں · Esc = ختم</div>';
   document.body.appendChild(placeBar);
   var pbTimer = null;
   function refreshPlaced() {
@@ -3513,6 +3620,56 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     });
   });
   window.__PLACEUI = { bar: placeBar, sync: pbSync, refreshPlaced: refreshPlaced };
+
+  /* ---- keyboard (DOM side): E = inventory/shop, Enter = activate,
+     Esc = back, R = rotate while placing. Movement + stairs (Space)
+     live in the scene patch (__KEY_IMPL). One small chip opens the key
+     card — the screen stays free of permanent explanation clutter. ---- */
+  var keyChip = document.createElement('button');
+  keyChip.type = 'button'; keyChip.id = 'keyChip'; keyChip.textContent = '⌨️ کیز';
+  document.body.appendChild(keyChip);
+  var keyCard = document.createElement('div');
+  keyCard.id = 'keyCard';
+  keyCard.innerHTML = '<h3>⌨️ کی بورڈ سے چلائیں (گیم والا انداز)</h3>' +
+    '<div class="kRow"><span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>آگے، بائیں، پیچھے، دائیں — نظارہ گھمائیں/چلیں (تیر والی کیز بھی)</span></div>' +
+    '<div class="kRow"><kbd>Space</kbd><span>سیڑھیاں — اوپر والی منزل (Shift + Space = نیچے والی منزل)</span></div>' +
+    '<div class="kRow"><kbd>E</kbd><span>انوینٹری — دکان کھولیں/بند کریں</span></div>' +
+    '<div class="kRow"><kbd>Enter</kbd><span>چالو — چیز لگائیں، یا اگلا مرحلہ</span></div>' +
+    '<div class="kRow"><kbd>R</kbd><span>لگاتے ہوئے چیز گھمائیں</span></div>' +
+    '<div class="kRow"><kbd>Esc</kbd><span>واپس — جو کھلا ہے بند کریں</span></div>' +
+    '<div class="kNote">ٹچ اسکرین پر سارے بٹن ویسے ہی رہتے ہیں — کیز ان کے علاوہ ایک تیز راستہ ہیں، متبادل نہیں۔</div>' +
+    '<button id="keyClose" type="button">ٹھیک ہے</button>';
+  document.body.appendChild(keyCard);
+  keyChip.addEventListener('click', function () { sndTap(); keyCard.style.display = (keyCard.style.display === 'block') ? 'none' : 'block'; });
+  document.getElementById('keyClose').addEventListener('click', function () { sndTap(); keyCard.style.display = 'none'; });
+  document.addEventListener('keydown', function (e) {
+    var tg = e.target;
+    if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable)) return;
+    if (e.code === 'KeyE') {
+      e.preventDefault();
+      if (window.__SHOPUI) window.__SHOPUI.tab.click();
+    } else if (e.code === 'KeyR') {
+      if (window.__PLACE && window.__PLACE.active()) { window.__PLACE.rotate(); if (window.__PLACEUI) window.__PLACEUI.sync(); }
+    } else if (e.code === 'Enter') {
+      e.preventDefault();
+      if (window.__PLACE && window.__PLACE.active()) { if (window.__PLACE.commit()) { sndDone(); if (window.__PLACEUI) window.__PLACEUI.sync(); } }
+      else {
+        var btns = Array.prototype.filter.call(document.querySelectorAll('.trayBtn'), function (b) { return b.id !== 'shopTab'; });
+        var act = window.__TRAY ? window.__TRAY.active() : -1;
+        var nx = btns[act + 1]; if (nx) nx.click();
+      }
+    } else if (e.code === 'Escape') {
+      if (window.__PLACE && window.__PLACE.active()) { window.__PLACE.cancel(); if (window.__PLACEUI) window.__PLACEUI.sync(); }
+      else if (window.__LOCK && window.__LOCK.panelOpen()) {
+        var lb = Array.prototype.filter.call(document.querySelectorAll('#lockPanel button'), function (b) { return b.textContent.indexOf('واپس') >= 0; })[0];
+        if (lb) lb.click();
+      }
+      else if (keyCard.style.display === 'block') keyCard.style.display = 'none';
+      else if (typeof coordPanel !== 'undefined' && coordPanel.style.display === 'block') coordPanel.style.display = 'none';
+      else if (shopSheet.style.display === 'block') shopSheet.style.display = 'none';
+    }
+  });
+  window.__KEYUI = { chip: keyChip, card: keyCard };
   var shopTab = document.createElement('button');
   shopTab.type = 'button'; shopTab.className = 'trayBtn'; shopTab.id = 'shopTab';
   shopTab.innerHTML = '<span class="ic">🛍️</span>دکان';
