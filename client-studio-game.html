@@ -773,7 +773,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       const wpv = new THREE.Vector3();
       for (const m of all) {
         const u = m.userData || {};
-        if (u.st == null || u.onlyStage != null || u.isSlab || u.isPlate) continue;
+        if (u.st == null || u.onlyStage != null || u.isSlab || u.isPlate || u.isDoor) continue; /* LIVING wave: door leaves stay separate so they can swing */
         if (m.isInstancedMesh) continue;
         if (!m.geometry || m.geometry.type !== 'BoxGeometry') continue;
         if (!m.material || Array.isArray(m.material) || m.material.transparent) continue;
@@ -1622,6 +1622,223 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         return Math.abs(sx - px) > 0.01 || Math.abs(sz - pz) > 0.01;
       };
       window.__WALK = WALK;
+try {
+      // ===== LIVING HOUSE wave (10 Nov 2026): doors swing, fixtures live in every room, guided living tour =====
+      const LIVE = { fix: [], doors: [], hit: [], tour: null, saved: null, doorsAll: false };
+      const LRED = !!window.__REDUCED;
+      function liveSnd(k){ try { if (window.__LIVE_SND) window.__LIVE_SND(k); } catch (e) {} }
+      const wcv = document.createElement('canvas'); wcv.width = 32; wcv.height = 128;
+      const wg2 = wcv.getContext('2d'); wg2.strokeStyle = 'rgba(255,255,255,0.9)'; wg2.lineWidth = 3;
+      for (let i = 0; i < 5; i++){ const x = 4 + i * 6; wg2.beginPath(); wg2.moveTo(x, -6); wg2.bezierCurveTo(x + 3, 40, x - 3, 84, x + 1, 134); wg2.stroke(); }
+      const wtex = new THREE.CanvasTexture(wcv); wtex.wrapS = wtex.wrapT = THREE.RepeatWrapping; wtex.repeat.set(1, 1.6);
+      const streamMat = new THREE.MeshBasicMaterial({ map: wtex, transparent: true, opacity: 0.75, depthWrite: false, color: 0xcfe8ff });
+      const dcv = document.createElement('canvas'); dcv.width = dcv.height = 64;
+      const dg = dcv.getContext('2d'); const grd = dg.createRadialGradient(32, 32, 2, 32, 32, 30); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.55, 'rgba(255,255,255,0.55)'); grd.addColorStop(1, 'rgba(255,255,255,0)'); dg.fillStyle = grd; dg.fillRect(0, 0, 64, 64);
+      const discTex = new THREE.CanvasTexture(dcv);
+      const rainMat = new THREE.PointsMaterial({ color: 0xaed6f5, size: 0.16, map: discTex, transparent: true, opacity: 0.8, depthWrite: false });
+      const steamMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5, map: discTex, transparent: true, opacity: 0.26, depthWrite: false });
+      const steelM = new THREE.MeshStandardMaterial({ color: 0xb9c0c7, roughness: 0.35, metalness: 0.6 });
+      const chromeM = new THREE.MeshStandardMaterial({ color: 0xd7dde2, roughness: 0.15, metalness: 0.8 });
+      const blackM = new THREE.MeshStandardMaterial({ color: 0x22262b, roughness: 0.5, metalness: 0.3 });
+      const flameM = new THREE.MeshBasicMaterial({ color: 0x3f8cff });
+      const stoneM = new THREE.MeshStandardMaterial({ color: 0x9aa0a3, roughness: 0.85, metalness: 0.02 });
+      function mkPoints(n, mat, area){ const pos = new Float32Array(n * 3); const seed = new Float32Array(n); for (let i = 0; i < n; i++){ const p = area(i); pos[i * 3] = p[0]; pos[i * 3 + 1] = p[1]; pos[i * 3 + 2] = p[2]; seed[i] = Math.random(); } const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.userData.seed = seed; return pts; }
+      function tagSt(g, st){ g.traverse(m => { if (m.isMesh || m.isPoints) m.userData.st = st; }); }
+      function noShadow(g){ g.traverse(m => { if (m.isMesh){ m.castShadow = false; m.receiveShadow = false; } }); }
+      function ewOf(p, r){ const tol = 0.06; if (p.wall === 'S' && Math.abs(p.z - r.z) < tol && p.x >= r.x - 0.01 && p.x <= r.x + r.w + 0.01) return 'S'; if (p.wall === 'N' && Math.abs(p.z - (r.z + r.d)) < tol && p.x >= r.x - 0.01 && p.x <= r.x + r.w + 0.01) return 'N'; if (p.wall === 'W' && Math.abs(p.x - r.x) < tol && p.z >= r.z - 0.01 && p.z <= r.z + r.d + 0.01) return 'W'; if (p.wall === 'E' && Math.abs(p.x - (r.x + r.w)) < tol && p.z >= r.z - 0.01 && p.z <= r.z + r.d + 0.01) return 'E'; return null; }
+      function roomWalls(r){ const dw = [], ww = []; for (const d of plan.doors){ const w = ewOf(d, r); if (w) dw.push(w); } for (const wn of plan.windows){ const w = ewOf(wn, r); if (w) ww.push(w); } return { dw, ww }; }
+      function pickWall(r, prefer){ const rw = roomWalls(r); const len = { N: r.w, S: r.w, E: r.d, W: r.d }; const byLen = ['N', 'S', 'E', 'W'].sort((a, b) => len[b] - len[a]); if (prefer === 'window' && rw.ww[0]) return rw.ww[0]; if (prefer === 'doorOpp' && rw.dw[0]) return ({ N: 'S', S: 'N', E: 'W', W: 'E' })[rw.dw[0]]; return byLen.find(w => !rw.dw.includes(w)) || 'N'; }
+      function wallPoint(r, wall, along, dist){ let px, pz; if (wall === 'N'){ px = r.x + along * r.w; pz = r.z + r.d - dist; } else if (wall === 'S'){ px = r.x + along * r.w; pz = r.z + dist; } else if (wall === 'E'){ px = r.x + r.w - dist; pz = r.z + along * r.d; } else { px = r.x + dist; pz = r.z + along * r.d; } return { x: MX(px), z: MZ(pz) }; }
+      function faceRot(wall){ return wall === 'S' ? 0 : wall === 'N' ? Math.PI : wall === 'E' ? -Math.PI / 2 : Math.PI / 2; }
+      function oppW(w){ return { N: 'S', S: 'N', E: 'W', W: 'E' }[w]; }
+      function adjW(w){ return { N: 'E', E: 'S', S: 'W', W: 'N' }[w]; }
+      function fixGroup(r, wall, along, dist, base){ const p = wallPoint(r, wall, along, dist); const g = new THREE.Group(); g.position.set(p.x, base, p.z); g.rotation.y = faceRot(wall); HOUSE.add(g); return g; }
+      function fixGroupAt(r, base){ const g = new THREE.Group(); g.position.set(MX(r.x + r.w / 2), base, MZ(r.z + r.d / 2)); HOUSE.add(g); return g; }
+      function regFix(kind, r, group, st, tick, setOn){ const f = { id: kind + '-' + LIVE.fix.length, kind, room: r.type, rid: r.id, fk: r.fk, rw: r.w, rd: r.d, cx: MX(r.x + r.w / 2), cz: MZ(r.z + r.d / 2), group, on: false, tick: tick || null, setOn: setOn || null, st, st8: {}, parts: [] }; group.traverse(m => { if (m.userData.fxVis) f.parts.push(m); }); LIVE.fix.push(f); LIVE.hit.push(group); group.userData.fixId = f.id; tagSt(group, st); noShadow(group); return f; }
+      function liveSet(f, on){ f.on = on; if (f.setOn) f.setOn(on); for (const p of f.parts) p.visible = on; }
+      function liveToggle(f){ liveSet(f, !f.on); liveSnd(f.on ? 'on' : 'off'); }
+      // ---------- bathroom: shower rain, basin tap + lit mirror, washing machine ----------
+      function buildBath(r, base){
+        const wall = pickWall(r, 'doorOpp');
+        const g = fixGroup(r, wall, 0.14, 0.3, base);
+        B(g, 0, 7.0, 0.55, 0.09, 0.09, 1.1, chromeM);
+        B(g, 0, 6.95, 1.1, 0.85, 0.1, 0.85, chromeM);
+        B(g, 0.85, 3.2, 1.05, 0.06, 6.4, 2.0, MAT.glass);
+        const rain = mkPoints(90, rainMat, () => [(Math.random() - 0.5) * 1.4, Math.random() * 6.4 + 0.3, 1.1 + (Math.random() - 0.5) * 1.4]);
+        rain.visible = false; rain.userData.fxVis = true; g.add(rain);
+        const splash = B(g, 0, 0.06, 1.1, 1.7, 0.05, 1.7, new THREE.MeshBasicMaterial({ color: 0x9fd0f0, transparent: true, opacity: 0.35, depthWrite: false }));
+        splash.visible = false; splash.userData.fxVis = true;
+        regFix('shower', r, g, stFit, (f, dt) => { if (!f.on) return; const p = rain.geometry.attributes.position; const n = p.count; for (let i = 0; i < n; i++){ let y = p.getY(i) - dt * 7.5; if (y < 0.15) y = 6.6; p.setY(i, y); } p.needsUpdate = true; splash.material.opacity = 0.25 + 0.12 * Math.sin(performance.now() * 0.012); }, null);
+        const g2 = fixGroup(r, wall, 0.78, 0.3, base);
+        B(g2, 0, 2.05, 0.2, 0.09, 0.6, 0.09, chromeM);
+        B(g2, 0, 2.32, 0.42, 0.09, 0.09, 0.55, chromeM);
+        const stream = B(g2, 0, 1.95, 0.66, 0.07, 0.7, 0.07, streamMat); stream.visible = false; stream.userData.fxVis = true;
+        const mirM = new THREE.MeshStandardMaterial({ color: 0xfff2cf, emissive: 0xffca7a, emissiveIntensity: 0 });
+        B(g2, 0, 3.9, 0.05, 1.8, 2.2, 0.08, mirM);
+        B(g2, 0, 3.9, 0.1, 1.58, 1.98, 0.03, new THREE.MeshStandardMaterial({ color: 0xaebfc6, roughness: 0.08, metalness: 0.5 }));
+        regFix('tap', r, g2, stFit, null, (on) => { mirM.emissiveIntensity = on ? 1.4 : 0; });
+        if (r.w >= 7 && r.d >= 7){
+          const gw = fixGroup(r, oppW(wall), 0.5, 0.2, base);
+          B(gw, 0, 1.6, 1.0, 2.1, 3.1, 2.0, MAT.white);
+          const drumGeo = new THREE.CylinderGeometry(0.62, 0.62, 0.1, 24); drumGeo.rotateX(Math.PI / 2);
+          const drum = new THREE.Mesh(drumGeo, steelM); drum.position.set(0, 1.7, 2.0); gw.add(drum);
+          const glassGeo = new THREE.CylinderGeometry(0.78, 0.78, 0.06, 24); glassGeo.rotateX(Math.PI / 2);
+          const glass = new THREE.Mesh(glassGeo, new THREE.MeshStandardMaterial({ color: 0x2a3138, roughness: 0.1, metalness: 0.4, transparent: true, opacity: 0.75 })); glass.position.set(0, 1.7, 2.04); gw.add(glass);
+          B(gw, 0, 2.85, 2.01, 1.7, 0.16, 0.04, blackM);
+          regFix('washer', r, gw, stFit, (f, dt) => { if (f.on) drum.rotation.z += dt * 2.6; }, null);
+        }
+      }
+      // ---------- kitchen: LED strip, sink tap, hob flame + steam, opening drawer, fridge ----------
+      function buildKitchen(r, base){
+        const wall = pickWall(r, 'window');
+        const horiz = (wall === 'N' || wall === 'S'); const run = (horiz ? r.w : r.d) - 1.2;
+        const gl = fixGroup(r, wall, 0.5, 0.15, base);
+        const ledM = new THREE.MeshStandardMaterial({ color: 0xfff2cf, emissive: 0xffca7a, emissiveIntensity: 0 });
+        B(gl, 0, 3.62, 0.8, run, 0.07, 0.07, ledM);
+        regFix('led', r, gl, stFit, null, (on) => { ledM.emissiveIntensity = on ? 1.6 : 0; });
+        const gs = fixGroup(r, wall, 0.3, 0.15, base);
+        B(gs, 0, 3.2, 0.9, 1.7, 0.12, 1.1, blackM);
+        B(gs, 0, 3.75, 0.3, 0.09, 1.1, 0.09, chromeM);
+        B(gs, 0, 4.22, 0.62, 0.09, 0.09, 0.7, chromeM);
+        const kstream = B(gs, 0, 3.6, 0.92, 0.07, 1.1, 0.07, streamMat); kstream.visible = false; kstream.userData.fxVis = true;
+        regFix('tap', r, gs, stFit, null, null);
+        const gh = fixGroup(r, wall, 0.64, 0.15, base);
+        B(gh, 0, 3.18, 0.95, 1.9, 0.06, 1.3, blackM);
+        const flames = [];
+        for (const fp of [[-0.42, 0.7], [0.42, 0.7], [-0.42, 1.2], [0.42, 1.2]]){ const cone = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.34, 10), flameM); cone.position.set(fp[0], 3.36, fp[1]); cone.visible = false; cone.userData.fxVis = true; gh.add(cone); flames.push(cone); }
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.55, 20), blackM); pot.position.set(0.42, 3.5, 0.7); gh.add(pot);
+        const steam = mkPoints(34, steamMat, () => [0.42 + (Math.random() - 0.5) * 0.5, 3.85 + Math.random() * 2.2, 0.7 + (Math.random() - 0.5) * 0.5]);
+        steam.visible = false; steam.userData.fxVis = true; gh.add(steam);
+        regFix('hob', r, gh, stFit, (f, dt, now) => { if (!f.on) return; for (let i = 0; i < flames.length; i++){ const s = LRED ? 1 : 0.9 + 0.22 * Math.sin(now * 0.04 + i * 1.7); flames[i].scale.set(s, s, s); } const p = steam.geometry.attributes.position; for (let i = 0; i < p.count; i++){ let y = p.getY(i) + dt * 1.1; if (y > 6.2) y = 3.85; p.setY(i, y); p.setX(i, p.getX(i) + Math.sin(now * 0.002 + i) * dt * 0.12); } p.needsUpdate = true; }, null);
+        const gd = fixGroup(r, wall, 0.46, 0.15, base);
+        const slide = new THREE.Group(); gd.add(slide);
+        B(slide, 0, 2.2, 1.83, 1.7, 1.0, 0.07, MAT.walnut);
+        B(slide, 0, 1.78, 1.15, 1.6, 0.06, 1.3, MAT.wood2);
+        const cutCols = [0xc0c6cc, 0x8a5a33, 0xc0c6cc, 0x3f8cff, 0xd8d2c4];
+        for (let i = 0; i < 5; i++) B(slide, -0.6 + i * 0.3, 1.9, 1.15, 0.16, 0.16, 0.8, new THREE.MeshStandardMaterial({ color: cutCols[i], roughness: 0.5 }));
+        const fd = regFix('drawer', r, gd, stFit, (f, dt) => { const cur = f.st8.k || 0; const tgt = f.on ? 1 : 0; const nk = LRED ? tgt : cur + (tgt - cur) * Math.min(1, dt * 4.5); f.st8.k = nk; slide.position.z = nk * 1.05; }, null);
+        const gf = fixGroup(r, adjW(wall), 0.18, 0.2, base);
+        B(gf, 0, 2.8, 1.0, 2.0, 5.6, 1.9, steelM);
+        for (let s2 = 0; s2 < 3; s2++){ B(gf, 0, 1.5 + s2 * 1.35, 1.35, 1.7, 0.06, 1.0, chromeM); }
+        const foodCols = [0xd8544a, 0x7fae62, 0xf2c14e, 0xe8e4da, 0xd8544a, 0x7fae62, 0xf2c14e, 0xe8e4da];
+        for (let i = 0; i < 8; i++) B(gf, -0.6 + (i % 4) * 0.4, 1.85 + Math.floor(i / 4) * 1.35, 1.35, 0.3, 0.55, 0.5, new THREE.MeshStandardMaterial({ color: foodCols[i], roughness: 0.6 }));
+        const fLightM = new THREE.MeshStandardMaterial({ color: 0xfff2cf, emissive: 0xffe9b0, emissiveIntensity: 0 });
+        B(gf, 0, 5.3, 1.5, 1.2, 0.07, 0.3, fLightM);
+        const piv = new THREE.Group(); piv.position.set(-1.0, 0, 1.97); gf.add(piv);
+        B(piv, 0.95, 2.75, 0, 1.9, 5.5, 0.09, steelM);
+        B(piv, 1.72, 3.1, 0.12, 0.09, 1.6, 0.09, blackM);
+        regFix('fridge', r, gf, stFit, (f, dt) => { const cur = f.st8.a || 0; const tgt = f.on ? -1.85 : 0; const na = LRED ? tgt : cur + (tgt - cur) * Math.min(1, dt * 4); f.st8.a = na; piv.rotation.y = na; fLightM.emissiveIntensity = Math.abs(na) / 1.85 * 1.6; }, null);
+      }
+      // ---------- living rooms: ceiling fan, TV picture, sliding curtains ----------
+      function buildRoom(r, base){
+        const g = fixGroupAt(r, base);
+        B(g, 0, FH - 0.75, 0, 0.09, 0.9, 0.09, blackM);
+        const spin = new THREE.Group(); spin.position.set(0, FH - 1.25, 0); g.add(spin);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.3, 14), blackM); spin.add(hub);
+        for (let i = 0; i < 3; i++){ const bl = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.05, 0.44), MAT.wood2); const an = i * Math.PI * 2 / 3; bl.position.set(Math.cos(an) * 1.05, 0, Math.sin(an) * 1.05); bl.rotation.y = -an; spin.add(bl); }
+        regFix('fan', r, g, stFurn, (f, dt) => { const v = f.st8.v || 0; const nv = v + ((f.on ? 8.5 : 0) - v) * Math.min(1, dt * (f.on ? 1.6 : 0.7)); f.st8.v = nv; if (Math.abs(nv) > 0.01 && !LRED) spin.rotation.y += nv * dt; else if (LRED && f.on) spin.rotation.y = 0.6; }, null);
+        if (['living', 'lounge', 'drawing'].includes(r.type)){
+          const sofaWall = pickWall(r); const tvWall = oppW(sofaWall);
+          const gt = fixGroup(r, tvWall, 0.5, 0.16, base);
+          B(gt, 0, 3.7, 0, 4.7, 2.7, 0.12, blackM);
+          const tcv = document.createElement('canvas'); tcv.width = 256; tcv.height = 144;
+          const tx = tcv.getContext('2d'); const ttex = new THREE.CanvasTexture(tcv);
+          const scr = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 2.4), new THREE.MeshBasicMaterial({ map: ttex }));
+          scr.position.set(0, 3.7, 0.08); scr.visible = false; scr.userData.fxVis = true; gt.add(scr);
+          regFix('tv', r, gt, stFurn, (f, dt, now) => { if (!f.on) return; if (now - (f.st8.last || 0) < 140) return; f.st8.last = now; const grd = tx.createLinearGradient(0, 0, 0, 144); grd.addColorStop(0, '#7fb2e0'); grd.addColorStop(0.62, '#cfe6f5'); grd.addColorStop(0.63, '#7fae62'); grd.addColorStop(1, '#5d8a48'); tx.fillStyle = grd; tx.fillRect(0, 0, 256, 144); tx.fillStyle = '#f7d774'; tx.beginPath(); tx.arc(208, 30, 13, 0, 7); tx.fill(); const cx2 = ((now * 0.012) % 320) - 40; tx.fillStyle = 'rgba(255,255,255,0.92)'; tx.beginPath(); tx.ellipse(cx2, 34, 22, 8, 0, 0, 7); tx.ellipse(cx2 + 16, 30, 15, 6, 0, 0, 7); tx.fill(); tx.fillStyle = '#8a5a33'; tx.fillRect(30, 66, 52, 30); tx.fillStyle = '#b0483e'; tx.beginPath(); tx.moveTo(24, 66); tx.lineTo(56, 48); tx.lineTo(88, 66); tx.fill(); tx.fillStyle = '#fff6dd'; tx.fillRect(50, 80, 12, 16); }, null);
+        }
+        if (['bed', 'living', 'lounge'].includes(r.type)){
+          const gc = new THREE.Group(); gc.position.set(0, base, 0); HOUSE.add(gc);
+          const panels = [];
+          for (const wn of plan.windows){ if (ewOf(wn, r) == null) continue; const wwall = wn.wall; const cxw = MX(wn.x), czw = MZ(wn.z); const inw = { N: [0, -1], S: [0, 1], E: [-1, 0], W: [1, 0] }[wwall] || [0, 1]; const axis = (wwall === 'N' || wwall === 'S') ? 'x' : 'z';
+          for (const sgn of [-1, 1]){ const pm = new THREE.Mesh(new THREE.BoxGeometry(axis === 'x' ? wn.w / 2 : 0.14, 6.6, axis === 'x' ? 0.14 : wn.w / 2), MAT.linen); const offC = sgn * wn.w / 4, offO = sgn * (wn.w / 2 + wn.w / 4 - 0.25); const bx = cxw + inw[0] * 0.3 + (axis === 'x' ? offC : 0), bz = czw + inw[1] * 0.3 + (axis === 'z' ? offC : 0); pm.position.set(bx, base + 3.6, bz); gc.add(pm); panels.push({ m: pm, axis, c: axis === 'x' ? bx : bz, o: axis === 'x' ? cxw + inw[0] * 0.3 + offO : czw + inw[1] * 0.3 + offO }); } }
+          if (panels.length) regFix('curtain', r, gc, stFurn, (f, dt) => { const cur = f.st8.k || 0; const tgt = f.on ? 1 : 0; const nk = LRED ? tgt : cur + (tgt - cur) * Math.min(1, dt * 3); f.st8.k = nk; for (const pn of panels){ const v = pn.c + (pn.o - pn.c) * nk; if (pn.axis === 'x') pn.m.position.x = v; else pn.m.position.z = v; } }, null);
+        }
+      }
+      // ---------- courtyard fountain ----------
+      function buildCourt(r, base){
+        const g = fixGroupAt(r, base);
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.3, 0.95, 22), stoneM); basin.position.set(0, 0.48, 0); g.add(basin);
+        const water = new THREE.Mesh(new THREE.CircleGeometry(1.85, 22), new THREE.MeshBasicMaterial({ color: 0x7fb8d8, transparent: true, opacity: 0.8 })); water.rotation.x = -Math.PI / 2; water.position.set(0, 0.86, 0); g.add(water);
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 2.2, 12), stoneM); col.position.set(0, 1.9, 0); g.add(col);
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.5, 0.3, 16), stoneM); bowl.position.set(0, 3.05, 0); g.add(bowl);
+        const arc = mkPoints(110, rainMat, (i) => [0, -10, 0]); arc.visible = false; arc.userData.fxVis = true; g.add(arc);
+        const ang = new Float32Array(110); for (let i = 0; i < 110; i++) ang[i] = (i / 110) * Math.PI * 2 + Math.random() * 0.2;
+        regFix('fountain', r, g, stFurn, (f, dt) => { if (!f.on) return; f.st8.t = (f.st8.t || 0) + dt * 0.55; const p = arc.geometry.attributes.position; const seed = arc.userData.seed; for (let i = 0; i < 110; i++){ const t = (seed[i] + f.st8.t) % 1; const rad = 0.3 + 1.5 * t; p.setXYZ(i, Math.cos(ang[i]) * rad, 3.05 - 2.2 * t * t, Math.sin(ang[i]) * rad); } p.needsUpdate = true; water.material.opacity = 0.7 + 0.12 * Math.sin(performance.now() * 0.006); }, null);
+      }
+      for (const r of plan.rooms){ const base = BASES[r.fk] || 0; if (r.type === 'bath') buildBath(r, base); else if (r.type === 'kitchen') buildKitchen(r, base); else if (r.type === 'court') buildCourt(r, base); else if (['bed', 'living', 'lounge', 'drawing', 'study'].includes(r.type)) buildRoom(r, base); }
+      // ---------- doors on hinges (leaves excluded from the merge for this) ----------
+      const doorMeshes = []; HOUSE.traverse(m => { if (m.isMesh && m.userData.isDoor) doorMeshes.push(m); });
+      for (const leaf of doorMeshes){
+        const gp = leaf.geometry.parameters; const spanX = gp.width > gp.depth; const len = spanX ? gp.width : gp.depth; const c = leaf.position.clone();
+        let pd = null, best = 1e9; for (const d of plan.doors){ const dx = MX(d.x) - c.x, dz = MZ(d.z) - c.z; const q = dx * dx + dz * dz; if (q < best){ best = q; pd = d; } }
+        const hinge = c.clone(); if (spanX) hinge.x -= len / 2; else hinge.z -= len / 2;
+        const pivot = new THREE.Group(); pivot.position.copy(hinge); HOUSE.add(pivot);
+        leaf.position.copy(c).sub(hinge); pivot.add(leaf);
+        let openA = 1.75; if (spanX) openA = (pd && pd.wall === 'S') ? -1.75 : 1.75; else openA = (pd && pd.wall === 'E') ? -1.75 : 1.75;
+        LIVE.doors.push({ pivot, cx: c.x, cz: c.z, a: 0, t: 0, open: openA });
+      }
+      // ---------- guided living tour ----------
+      function liveTourStart(){
+        if (LIVE.tour) return; const stops = []; const byId = {};
+        for (const f of LIVE.fix){ if (!byId[f.rid]){ const r = plan.rooms.find(x => x.id === f.rid); if (!r) continue; byId[f.rid] = { rid: f.rid, x: MX(r.x + r.w / 2), z: MZ(r.z + r.d / 2), base: BASES[f.fk] || 0, rad: Math.max(4.8, Math.min(10, Math.min(r.w, r.d) * 0.45)), ids: [] }; stops.push(byId[f.rid]); } byId[f.rid].ids.push(f.id); }
+        if (!stops.length) return;
+        LIVE.saved = { tg: camTg.clone(), radius: orb.sph.radius, phi: orb.sph.phi, theta: orb.sph.theta, floor: state.floor };
+        LIVE.tour = { stops, i: -1, t: 0, phase: 'go', from: null };
+        try { const b = document.querySelector('[data-fl="all"]'); if (b) b.click(); } catch (e) {}
+        liveSnd('tour');
+      }
+      function liveTourStop(){
+        if (!LIVE.tour) return; LIVE.tour = null;
+        if (LIVE.saved){ camTg.copy(LIVE.saved.tg); orb.sph.radius = LIVE.saved.radius; orb.sph.phi = LIVE.saved.phi; orb.sph.theta = LIVE.saved.theta; applyCam(); try { const b = document.querySelector('[data-fl="' + LIVE.saved.floor + '"]'); if (b) b.click(); } catch (e) {} LIVE.saved = null; }
+      }
+      function tourSnap(){ return { x: camTg.x, y: camTg.y, z: camTg.z, radius: orb.sph.radius, phi: orb.sph.phi, theta: orb.sph.theta }; }
+      function tourApply(s){ camTg.set(s.x, s.y, s.z); orb.sph.radius = s.radius; orb.sph.phi = s.phi; orb.sph.theta = s.theta; applyCam(); }
+      function tourTick(dt){
+        const T = LIVE.tour; if (!T) return; T.t += dt;
+        if (T.phase === 'go'){
+          if (!T.from){ T.i++; if (T.i >= T.stops.length){ liveTourStop(); return; } const st = T.stops[T.i]; T.from = tourSnap(); T.to = { x: st.x, y: st.base + 3.4, z: st.z, radius: st.rad, phi: 1.12, theta: (LIVE.saved ? LIVE.saved.theta : 0.7) + T.i * 0.6 }; T.t = 0; }
+          const dur = LRED ? 0.01 : 0.95; const k = Math.min(1, T.t / dur); const e = k * k * (3 - 2 * k);
+          tourApply({ x: T.from.x + (T.to.x - T.from.x) * e, y: T.from.y + (T.to.y - T.from.y) * e, z: T.from.z + (T.to.z - T.from.z) * e, radius: T.from.radius + (T.to.radius - T.from.radius) * e, phi: T.from.phi + (T.to.phi - T.from.phi) * e, theta: T.from.theta + (T.to.theta - T.from.theta) * e });
+          if (k >= 1){ const st = T.stops[T.i]; for (const id of st.ids){ const f = LIVE.fix.find(x => x.id === id); if (f && !f.on) liveSet(f, true); } T.phase = 'hold'; T.t = 0; }
+        } else if (T.phase === 'hold'){
+          orb.sph.theta += dt * 0.07; applyCam();
+          if (T.t > 2.6){ T.phase = 'go'; T.from = null; T.t = 0; }
+        }
+      }
+      // ---------- tap-to-toggle + main living loop ----------
+      if (!window.__LIVE_WIRED){
+        window.__LIVE_WIRED = true; let lx = 0, ly = 0;
+        renderer.domElement.addEventListener('pointerdown', e => { lx = e.clientX; ly = e.clientY; });
+        renderer.domElement.addEventListener('pointerup', e => { if (Math.hypot(e.clientX - lx, e.clientY - ly) > 9) return; if (window.__PLACE && window.__PLACE.active()) return; const im = window.__LIVE_IMPL; if (im) im.tap(e); });
+      }
+      window.__LIVE_IMPL = { tap: (e) => { const rect = renderer.domElement.getBoundingClientRect(); const rc = new THREE.Raycaster(); const nd = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1); rc.setFromCamera(nd, camera); const hits = rc.intersectObjects(LIVE.hit, true); if (hits.length){ let o = hits[0].object; while (o && !o.userData.fixId) o = o.parent; if (o){ const f = LIVE.fix.find(x => x.id === o.userData.fixId); if (f) liveToggle(f); } } } };
+      window.__LIVE = {
+        count: () => LIVE.fix.length,
+        list: () => LIVE.fix.map(f => ({ id: f.id, kind: f.kind, room: f.room, fk: f.fk, on: f.on })),
+        toggle: (id) => { const f = LIVE.fix.find(x => x.id === id); if (f) liveToggle(f); return f ? f.on : null; },
+        setAll: (on) => { LIVE.fix.forEach(f => liveSet(f, on)); LIVE.doorsAll = !!on; liveSnd(on ? 'on' : 'off'); },
+        isAll: () => LIVE.fix.length > 0 && LIVE.fix.every(f => f.on),
+        doors: () => LIVE.doors.map(d => +d.a.toFixed(2)),
+        doorsN: () => LIVE.doors.length,
+        near: () => { let best = null, bd = 60; for (const f of LIVE.fix){ const p = f.group.position; const dx = p.x - camera.position.x, dz = p.z - camera.position.z, dy = p.y + 3 - camera.position.y; const q = dx * dx + dz * dz + dy * dy * 0.3; if (q < bd){ bd = q; best = f; } } if (best){ liveToggle(best); return best.id; } return null; },
+        look: (kind) => { const f = LIVE.fix.find(x => x.kind === kind) || LIVE.fix[0]; if (!f) return null; const p = f.group.position; const small = ['shower', 'tap', 'washer'].includes(f.kind); camTg.set(p.x, p.y + (small ? 3.1 : 3.2), p.z); const dx = (f.cx != null ? f.cx - p.x : 0), dz = (f.cz != null ? f.cz - p.z : 0); const distC = Math.hypot(dx, dz); orb.sph.radius = Math.max(4.8, Math.min(small ? 8 : 10.5, Math.max(distC * 1.35, Math.min(f.rw || 12, f.rd || 12) * 0.66))); orb.sph.phi = small ? 1.22 : 1.08; orb.sph.theta = distC > 0.5 ? Math.atan2(dx, dz) : f.group.rotation.y; applyCam(); return f.id; },
+        tour: (on) => { if (on === true) liveTourStart(); else if (on === false) liveTourStop(); return !!LIVE.tour; },
+        tourInfo: () => LIVE.tour ? { i: LIVE.tour.i, n: LIVE.tour.stops.length } : null
+      };
+      let livePrev = performance.now();
+      function liveLoop(now){
+        requestAnimationFrame(liveLoop); const dt = Math.min(0.1, (now - livePrev) / 1000); livePrev = now; if (!HOUSE) return;
+        let anyStream = false;
+        for (const f of LIVE.fix){ if (f.kind === 'tap' && f.on) anyStream = true; if (f.tick) f.tick(f, dt, now); }
+        if (anyStream && !LRED) wtex.offset.y -= dt * 1.7;
+        for (const f of LIVE.fix){ if (!f.parts.length) continue; const bandOk = state.floor === 'all' || f.fk === state.floor; const stOk = state.stage >= f.st; for (const p of f.parts){ const want = f.on && bandOk && stOk; if (p.visible !== want) p.visible = want; } }
+        const wp = (window.__WALK && window.__WALK.on) || LIVE.tour ? camera.position : null;
+        for (const d of LIVE.doors){ let want = 0; if (LIVE.doorsAll) want = d.open; else if (wp){ const dx = wp.x - d.cx, dz = wp.z - d.cz; if (dx * dx + dz * dz < 8.4) want = d.open; } d.t = want; d.a = LRED ? d.t : d.a + (d.t - d.a) * Math.min(1, dt * 8); if (Math.abs(d.a) > 0.002 || want) d.pivot.rotation.y = d.a; }
+        tourTick(dt);
+      }
+      requestAnimationFrame(liveLoop);
+} catch (e) { window.__LIVE_ERR = String((e && e.stack) || e); }
     } catch (e) {}
     summary(spec);
     buildRoomList(plan);
@@ -3388,9 +3605,13 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#keyClose{margin-top:10px;width:100%;min-height:48px;border:0;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer}' +
     '#walkBtn{position:fixed;right:10px;top:252px;z-index:93;min-width:52px;min-height:48px;border-radius:14px;border:1.6px solid #C7A252;background:#FFFBF0;color:#5c4a12;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
     '#walkBtn.on{background:#0C3B2E;color:#F7F3EA;border-color:#0C3B2E}' +
+    '#liveBtn,#tourBtn{position:fixed;right:10px;z-index:93;min-width:52px;min-height:48px;border-radius:14px;border:1.6px solid #C7A252;background:#FFFBF0;color:#5c4a12;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
+    '#liveBtn{top:308px}' +
+    '#tourBtn{top:364px}' +
+    '#liveBtn.on,#tourBtn.on{background:#0C3B2E;color:#F7F3EA;border-color:#0C3B2E}' +
     '#walkHint{position:fixed;bottom:238px;inset-inline:0;margin-inline:auto;width:max-content;max-width:94vw;z-index:94;display:none;background:rgba(12,59,46,.92);color:#F7F3EA;border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:700;box-shadow:0 6px 18px rgba(10,40,30,.3);transition:opacity .4s}' +
-    '#questCard button,#shopSheet button,.trayBtn,#todBar button,#placeBar button,#coordPanel button,#keyCard button,#lockPanel button,#walkBtn,#keyChip,#zoomBox button,#drawerClose,#questChip{transition:transform .1s ease}' +
-    '#questCard button:active,#shopSheet button:active,.trayBtn:active,#todBar button:active,#placeBar button:active,#coordPanel button:active,#keyCard button:active,#lockPanel button:active,#walkBtn:active,#keyChip:active,#zoomBox button:active,#drawerClose:active,#questChip:active{transform:scale(.94)}' +
+    '#questCard button,#shopSheet button,.trayBtn,#todBar button,#placeBar button,#coordPanel button,#keyCard button,#lockPanel button,#walkBtn,#liveBtn,#tourBtn,#keyChip,#zoomBox button,#drawerClose,#questChip{transition:transform .1s ease}' +
+    '#questCard button:active,#shopSheet button:active,.trayBtn:active,#todBar button:active,#placeBar button:active,#coordPanel button:active,#keyCard button:active,#lockPanel button:active,#walkBtn:active,#liveBtn:active,#tourBtn:active,#keyChip:active,#zoomBox button:active,#drawerClose:active,#questChip:active{transform:scale(.94)}' +
     '@media (prefers-reduced-motion: reduce){#questCard,#shopSheet,#coordPanel .in,#keyCard,#lockPanel{animation:none}}' +
     '@keyframes glIn{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}' +
     '#questCard,#shopSheet,#coordPanel .in,#keyCard,#lockPanel{animation:glIn .18s ease}' +
@@ -3858,13 +4079,14 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       e.preventDefault();
       if (window.__PLACE && window.__PLACE.active()) { if (window.__PLACE.commit()) { sndDone(); buzz(25); if (window.__PLACEUI) window.__PLACEUI.sync(); } }
       else {
-        if (window.__WALK && window.__WALK.on) return;
+        if (window.__WALK && window.__WALK.on) { if (window.__LIVE) window.__LIVE.near(); return; }
         var btns = Array.prototype.filter.call(document.querySelectorAll('.trayBtn'), function (b) { return b.id !== 'shopTab'; });
         var act = window.__TRAY ? window.__TRAY.active() : -1;
         var nx = btns[act + 1]; if (nx) nx.click();
       }
     } else if (e.code === 'Escape') {
       if (window.__PLACE && window.__PLACE.active()) { window.__PLACE.cancel(); if (window.__PLACEUI) window.__PLACEUI.sync(); }
+      else if (window.__LIVE && window.__LIVE.tour()) { window.__LIVE.tour(false); if (window.__LIVEUI) window.__LIVEUI.sync(); }
       else if (window.__WALK && window.__WALK.on) { window.__WALK.exit(); }
       else if (window.__LOCK && window.__LOCK.panelOpen()) {
         var lb = Array.prototype.filter.call(document.querySelectorAll('#lockPanel button'), function (b) { return b.textContent.indexOf('واپس') >= 0; })[0];
@@ -3883,7 +4105,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   document.body.appendChild(walkBtn);
   var walkHint = document.createElement('div');
   walkHint.id = 'walkHint';
-  walkHint.textContent = '🚶 واک موڈ — WASD: چلیں · گھسیٹ کر دیکھیں · اسکرول یا +/−: زوم · Space: منزل · Esc: واک ختم';
+  walkHint.textContent = '🚶 واک موڈ — WASD: چلیں · گھسیٹ کر دیکھیں · اسکرول یا +/−: زوم · Space: منزل · Enter: قریبی چیز چلائیں · Esc: واک ختم';
   document.body.appendChild(walkHint);
   var zoomBox = document.createElement('div');
   zoomBox.id = 'zoomBox';
@@ -3928,6 +4150,32 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     walkSync();
   });
   window.__WALKUI = { sync: walkSync, btn: walkBtn };
+
+  /* ---- living house (10 Nov 2026): master switch, guided tour, sounds ---- */
+  window.__LIVE_SND = function (k) { if (k === 'on') sndDone(); else if (k === 'tour') sndWin(); else sndTap(); };
+  var liveBtn = document.createElement('button');
+  liveBtn.type = 'button'; liveBtn.id = 'liveBtn'; liveBtn.textContent = '⚡ زندہ گھر';
+  document.body.appendChild(liveBtn);
+  var tourBtn = document.createElement('button');
+  tourBtn.type = 'button'; tourBtn.id = 'tourBtn'; tourBtn.textContent = '🎬 زندہ دورہ';
+  document.body.appendChild(tourBtn);
+  function liveSync() {
+    if (!window.__LIVE) { liveBtn.classList.remove('on'); tourBtn.classList.remove('on'); return; }
+    liveBtn.classList.toggle('on', !!window.__LIVE.isAll());
+    var touring = !!window.__LIVE.tour();
+    tourBtn.classList.toggle('on', touring);
+    tourBtn.textContent = touring ? '⏹ دورہ روکیں' : '🎬 زندہ دورہ';
+  }
+  liveBtn.addEventListener('click', function () { sndTap(); if (window.__LIVE) window.__LIVE.setAll(!window.__LIVE.isAll()); liveSync(); });
+  tourBtn.addEventListener('click', function () {
+    sndTap();
+    var mm = document.getElementById('mModel');
+    if (mm && !mm.classList.contains('on')) mm.click();
+    if (window.__LIVE) window.__LIVE.tour(!window.__LIVE.tour());
+    liveSync();
+  });
+  setInterval(liveSync, 700);
+  window.__LIVEUI = { sync: liveSync, liveBtn: liveBtn, tourBtn: tourBtn };
   var shopTab = document.createElement('button');
   shopTab.type = 'button'; shopTab.className = 'trayBtn'; shopTab.id = 'shopTab';
   shopTab.innerHTML = '<span class="ic">🛍️</span>دکان';
