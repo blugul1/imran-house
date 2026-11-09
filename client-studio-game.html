@@ -1282,6 +1282,107 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         clear: function () { if (itemG) { SG.remove(itemG); itemG = null; } curItem = null; },
         cur: function () { return curItem; }
       };
+      /* ==== GAME: in-room placement (G2 slice 2, interview Q31) ====
+         Floor-standing catalogue pieces (sofa, kitchen unit) can be placed
+         INTO rooms of the live plan: a translucent ghost follows the pointer
+         on the current floor plane (0.5 ft snap), the footprint turns green
+         only inside a suitable room with no overlap, and the written reason
+         shows otherwise. Tap (or the bar button) commits. Wall pieces
+         (door, window, gate, railing) stay showroom-only until wall
+         snapping lands. Decoration only — never part of the measured plan,
+         never priced, cleared when the plan rebuilds. */
+      if (window.__PLACEDG && window.__PLACEDG.parent) window.__PLACEDG.parent.remove(window.__PLACEDG);
+      const PG = new THREE.Group(); scene.add(PG); window.__PLACEDG = PG;
+      const PLACEDL = [];
+      const FOOT = { sofa: [6, 2.8], kitchen: [7.5, 2.4] };
+      const FIT = { sofa: ['living', 'drawing', 'lounge', 'bed', 'family', 'hall', 'tv', 'sitting'], kitchen: ['kitchen'] };
+      let gh = null, ghId = null, ghOk = false, ghReason = '', ghRoom = null, ghRot = 0, ghPos = null, ghPlane = null;
+      const rayc = new THREE.Raycaster(), ndc = new THREE.Vector2();
+      function placeFk() { return (state.floor && state.floor !== 'all') ? state.floor : 'ground'; }
+      function mkGhost(id) {
+        endGhost();
+        gh = new THREE.Group(); ghId = id; ghRot = 0;
+        BUILDERS[id](gh);
+        gh.traverse(function (m) { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = 0.55; m.castShadow = false; m.receiveShadow = false; } });
+        const f = FOOT[id];
+        ghPlane = new THREE.Mesh(new THREE.PlaneGeometry(f[0], f[1]), new THREE.MeshBasicMaterial({ color: 0xc0392b, transparent: true, opacity: 0.35, depthWrite: false }));
+        ghPlane.rotation.x = -Math.PI / 2; ghPlane.position.y = 0.06; gh.add(ghPlane);
+        PG.add(gh);
+      }
+      function endGhost() { if (gh) { PG.remove(gh); gh = null; } ghId = null; ghOk = false; ghPos = null; }
+      function evalGhost() {
+        if (!gh || !ghPos) { ghOk = false; return; }
+        const fk = placeFk(), f = FOOT[ghId];
+        const hw = (ghRot % 2 ? f[1] : f[0]) / 2, hd = (ghRot % 2 ? f[0] : f[1]) / 2;
+        let px = ghPos.x + plan.meta.plotW / 2, pz = ghPos.z + plan.meta.depth / 2;
+        ghOk = false; ghRoom = null; ghReason = 'کسی کمرے کے اندر رکھیں';
+        for (const r of plan.rooms) {
+          if (r.fk !== fk) continue;
+          if (px < r.x || px > r.x + r.w || pz < r.z || pz > r.z + r.d) continue;
+          if (FIT[ghId] && FIT[ghId].indexOf(r.type) < 0) { ghReason = 'یہ چیز اس کمرے کے لیے موزوں نہیں'; continue; }
+          if (hw * 2 > r.w + 0.01 || hd * 2 > r.d + 0.01) { ghReason = 'یہ چیز اس کمرے میں پوری نہیں آتی — گھما کر دیکھیں'; continue; }
+          /* wall-hug assist: clamp the centre into the room so a piece that
+             almost fills the room (e.g. a 7.5 ft kitchen run in a 7.75 ft
+             kitchen) still lands cleanly instead of missing by an inch. */
+          px = Math.max(r.x + hw, Math.min(r.x + r.w - hw, px));
+          pz = Math.max(r.z + hd, Math.min(r.z + r.d - hd, pz));
+          ghRoom = r; ghOk = true; ghReason = '';
+          ghPos = { x: px - plan.meta.plotW / 2, z: pz - plan.meta.depth / 2 };
+          gh.position.set(ghPos.x, BASES[fk] || 0, ghPos.z);
+          break;
+        }
+        if (ghOk) for (const p of PLACEDL) {
+          if (p.fk !== fk) continue;
+          if (Math.abs(p.px - px) < (p.hw + hw) && Math.abs(p.pz - pz) < (p.hd + hd)) { ghOk = false; ghReason = 'یہاں پہلے سے ایک چیز رکھی ہے'; break; }
+        }
+        if (ghPlane) ghPlane.material.color.set(ghOk ? 0x2e7d32 : 0xc0392b);
+      }
+      function moveGhost(cx, cy) {
+        if (!gh) return;
+        const rect = renderer.domElement.getBoundingClientRect();
+        ndc.x = ((cx - rect.left) / rect.width) * 2 - 1; ndc.y = -((cy - rect.top) / rect.height) * 2 + 1;
+        rayc.setFromCamera(ndc, camera);
+        const fk = placeFk(), y = (BASES[fk] || 0) + 0.02;
+        const t = (y - rayc.ray.origin.y) / rayc.ray.direction.y;
+        if (!isFinite(t) || t < 0) return;
+        const pt = rayc.ray.origin.clone().add(rayc.ray.direction.clone().multiplyScalar(t));
+        const px = Math.round((pt.x + plan.meta.plotW / 2) * 2) / 2 - plan.meta.plotW / 2;
+        const pz = Math.round((pt.z + plan.meta.depth / 2) * 2) / 2 - plan.meta.depth / 2;
+        ghPos = { x: px, z: pz };
+        gh.position.set(px, BASES[fk] || 0, pz);
+        gh.rotation.y = ghRot * Math.PI / 2;
+        evalGhost();
+      }
+      window.__PLACE_IMPL = { move: moveGhost, tap: function (cx, cy) { if (gh) { moveGhost(cx, cy); if (ghOk) window.__PLACE.commit(); } } };
+      if (!window.__PLACE_WIRED) {
+        window.__PLACE_WIRED = true;
+        let dA = null;
+        renderer.domElement.addEventListener('pointermove', function (e) { const im = window.__PLACE_IMPL; if (im) im.move(e.clientX, e.clientY); });
+        renderer.domElement.addEventListener('pointerdown', function (e) { dA = [e.clientX, e.clientY]; });
+        renderer.domElement.addEventListener('pointerup', function (e) { if (!dA) return; const dx = e.clientX - dA[0], dy = e.clientY - dA[1]; dA = null; if (dx * dx + dy * dy < 36) { const im = window.__PLACE_IMPL; if (im) im.tap(e.clientX, e.clientY); } });
+      }
+      window.__PLACE = {
+        can: function (id) { return !!FOOT[id]; },
+        ids: Object.keys(FOOT),
+        start: function (id) { if (!FOOT[id] || !BUILDERS[id]) return false; mkGhost(id); return true; },
+        rotate: function () { if (gh) { ghRot = (ghRot + 1) % 4; gh.rotation.y = ghRot * Math.PI / 2; evalGhost(); } },
+        commit: function () {
+          if (!gh || !ghOk || !ghPos) return false;
+          const fk = placeFk(), f = FOOT[ghId];
+          const g = new THREE.Group(); BUILDERS[ghId](g);
+          g.position.set(ghPos.x, BASES[fk] || 0, ghPos.z); g.rotation.y = ghRot * Math.PI / 2;
+          PG.add(g);
+          PLACEDL.push({ id: ghId, fk: fk, room: ghRoom ? ghRoom.type : '', px: ghPos.x + plan.meta.plotW / 2, pz: ghPos.z + plan.meta.depth / 2, hw: (ghRot % 2 ? f[1] : f[0]) / 2, hd: (ghRot % 2 ? f[0] : f[1]) / 2, g: g });
+          evalGhost();
+          return true;
+        },
+        cancel: function () { endGhost(); },
+        active: function () { return !!gh; },
+        state: function () { return { active: !!gh, id: ghId, ok: ghOk, reason: ghReason, room: ghRoom ? ghRoom.type : '', count: PLACEDL.length }; },
+        list: function () { return PLACEDL.map(function (p, i) { return { i: i, id: p.id, room: p.room, fk: p.fk }; }); },
+        remove: function (i) { const p = PLACEDL[i]; if (!p) return false; PG.remove(p.g); PLACEDL.splice(i, 1); return true; },
+        clear: function () { while (PLACEDL.length) { const p = PLACEDL.pop(); PG.remove(p.g); } }
+      };
     } catch (e) {}
     summary(spec);
     buildRoomList(plan);
@@ -3021,6 +3122,22 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '.shopBtns{display:flex;gap:6px}' +
     '.shopShow{flex:1;min-height:44px;border:0;border-radius:9px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}' +
     '.shopWa{flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;border:1.4px solid #2e7d4f;border-radius:9px;background:#fff;color:#20513a;font-size:13.5px;font-weight:700;text-decoration:none}' +
+    '.shopPlace{flex:1;min-height:44px;border:1.4px solid #C7A252;border-radius:9px;background:#fdf6e0;color:#6b5518;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}' +
+    '#placeBar{position:fixed;left:8px;right:8px;bottom:176px;z-index:96;display:none;background:#FFFBF0;border:2px solid #C7A252;border-radius:14px;box-shadow:0 8px 26px rgba(60,45,10,.28);padding:10px 12px;color:#2b2b26}' +
+    '#placeBar .pbT{font-weight:800;font-size:15px;margin-bottom:2px}' +
+    '#placeBar .pbS{font-size:13.5px;min-height:20px;margin-bottom:8px}' +
+    '#placeBar .pbS.ok{color:#20513a;font-weight:700}' +
+    '#placeBar .pbS.bad{color:#8e2f26}' +
+    '#placeBar .pbBtns{display:flex;gap:6px;flex-wrap:wrap}' +
+    '#placeBar .pbBtns button{min-height:48px;padding:0 14px;border-radius:10px;border:0;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}' +
+    '#pbOk{background:#0C3B2E;color:#F7F3EA;flex:1}' +
+    '#pbOk:disabled{background:#b9bfae;color:#5a6053}' +
+    '#pbRot{background:#eef3ec;color:#20513a;border:1.4px solid #9db8a4!important}' +
+    '#pbCancel{background:#f7e8e4;color:#8e2f26;border:1.4px solid #d8a49b!important}' +
+    '#placedBox{margin-top:10px;border-top:1.5px dashed #d8c98f;padding-top:8px}' +
+    '#placedBox .plT{font-weight:800;font-size:14px;margin-bottom:5px}' +
+    '.plRow{display:flex;align-items:center;gap:8px;background:#fff;border:1.2px solid #e0d3a8;border-radius:9px;padding:6px 9px;margin-bottom:5px;font-size:13.5px}' +
+    '.plRow button{margin-inline-start:auto;min-width:44px;min-height:36px;border:0;border-radius:8px;background:#f7e8e4;color:#8e2f26;font-family:inherit;font-weight:700;cursor:pointer}' +
     '#coordBtn{display:block;width:100%;margin-top:9px;min-height:46px;border:1.4px solid #0C3B2E;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}' +
     '#coordPanel{position:fixed;inset:0;z-index:210;display:none;align-items:center;justify-content:center;background:rgba(20,30,40,.5)}' +
     '#coordPanel .in{background:#FFFBF0;border:2px solid #0C3B2E;border-radius:18px;width:92vw;max-width:352px;max-height:88vh;overflow-y:auto;box-shadow:0 14px 44px rgba(0,0,0,.35);color:#2b2b26}' +
@@ -3331,13 +3448,14 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   var shopSheet = document.createElement('div');
   shopSheet.id = 'shopSheet';
   shopSheet.innerHTML = '<div id="shopHead"><span>🛍️ بی بی بی دکان — نمونے</span><button id="shopClose" type="button">✕ بند کریں</button></div>' +
-    '<p id="shopNote">یہ نمونے ہیں — اصل چیز آپ کے ناپ و پسند سے بنے گی۔ قیمت بات کر کے طے ہو گی۔ کوئی چیز دبائیں، وہ گھر کے ساتھ کھڑی نظر آئے گی۔</p>' +
+    '<p id="shopNote">یہ نمونے ہیں — اصل چیز آپ کے ناپ و پسند سے بنے گی۔ قیمت بات کر کے طے ہو گی۔ صوفہ اور کچن یونٹ اپنے کمرے کے اندر لگا کر بھی دیکھے جا سکتے ہیں — یہ سجاوٹ ہے، تخمینے میں شامل نہیں۔ دروازہ، کھڑکی، گیٹ اور ریلنگ دیوار سے لگتے ہیں؛ ان کا کمرے میں لگانا اگلے مرحلے میں آئے گا۔</p>' +
     '<div id="shopGrid">' + SHOPCAT.map(function (it) {
+      var placeBtn = (it.id === 'sofa' || it.id === 'kitchen') ? '<button class="shopPlace" type="button" data-id="' + it.id + '">🏠 کمرے میں لگائیں</button>' : '';
       return '<div class="shopCard" data-id="' + it.id + '"><div class="shopNm">' + it.nm + '</div><div class="shopD">' + it.d + '</div>' +
-        '<div class="shopBtns"><button class="shopShow" type="button" data-id="' + it.id + '">👁 دکھائیں</button>' +
+        '<div class="shopBtns"><button class="shopShow" type="button" data-id="' + it.id + '">👁 دکھائیں</button>' + placeBtn +
         '<a class="shopWa" target="_blank" rel="noopener" href="https://wa.me/923179222029?text=' +
         encodeURIComponent('السلام علیکم! مجھے «' + it.nm + '» کے بارے میں بات کرنی ہے۔ (گھر دیکھو ایپ سے)') + '">📲 بات کریں</a></div></div>';
-    }).join('') + '</div>';
+    }).join('') + '</div><div id="placedBox" style="display:none"><div class="plT">🧺 میرے لگائے ہوئے</div><div id="placedList"></div></div>';
   document.body.appendChild(shopSheet);
   document.getElementById('shopClose').addEventListener('click', function () { shopSheet.style.display = 'none'; });
   shopSheet.querySelectorAll('.shopShow').forEach(function (b) {
@@ -3348,12 +3466,60 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       }
     });
   });
+  /* ---- G2 slice 2: in-room placement UI ---- */
+  var ROOMUR = { living: 'لیونگ', drawing: 'ڈرائنگ روم', lounge: 'لاؤنج', bed: 'بیڈروم', family: 'فیملی روم', hall: 'ہال', tv: 'ٹی وی لاؤنج', sitting: 'بیٹھک', kitchen: 'کچن' };
+  var ITEMUR = { sofa: 'صوفہ سیٹ', kitchen: 'ایلومینیم کچن' };
+  var placeBar = document.createElement('div');
+  placeBar.id = 'placeBar';
+  placeBar.innerHTML = '<div class="pbT"></div><div class="pbS"></div>' +
+    '<div class="pbBtns"><button id="pbOk" type="button">✓ یہیں لگائیں</button><button id="pbRot" type="button">🔄 گھمائیں</button><button id="pbCancel" type="button">✕ ختم</button></div>';
+  document.body.appendChild(placeBar);
+  var pbTimer = null;
+  function refreshPlaced() {
+    var box = document.getElementById('placedBox'), list = document.getElementById('placedList');
+    if (!box || !list || !window.__PLACE) return;
+    var items = window.__PLACE.list();
+    box.style.display = items.length ? 'block' : 'none';
+    list.innerHTML = items.map(function (p) {
+      return '<div class="plRow"><span>' + (ITEMUR[p.id] || p.id) + (p.room ? ' — ' + (ROOMUR[p.room] || p.room) : '') + '</span><button type="button" data-i="' + p.i + '">✕ ہٹائیں</button></div>';
+    }).join('');
+    list.querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () { sndTap(); if (window.__PLACE) window.__PLACE.remove(+b.getAttribute('data-i')); refreshPlaced(); });
+    });
+  }
+  function pbSync() {
+    if (!window.__PLACE) return;
+    var st = window.__PLACE.state();
+    if (!st.active) { placeBar.style.display = 'none'; if (pbTimer) { clearInterval(pbTimer); pbTimer = null; } refreshPlaced(); return; }
+    placeBar.style.display = 'block';
+    placeBar.querySelector('.pbT').textContent = '🏠 ' + (ITEMUR[st.id] || st.id) + ' لگایا جا رہا ہے — جگہ چنیں';
+    var s = placeBar.querySelector('.pbS');
+    if (st.ok) { s.textContent = '✓ یہ جگہ ٹھیک ہے' + (st.room ? ' (' + (ROOMUR[st.room] || st.room) + ')' : '') + ' — انگلی سے چھوئیں یا «یہیں لگائیں» دبائیں'; s.className = 'pbS ok'; }
+    else { s.textContent = st.reason ? '✕ ' + st.reason : 'نقشے پر انگلی گھمائیں — سایہ دار نمونہ ساتھ چلے گا'; s.className = 'pbS bad'; }
+    document.getElementById('pbOk').disabled = !st.ok;
+  }
+  document.getElementById('pbOk').addEventListener('click', function () { if (window.__PLACE && window.__PLACE.commit()) { sndDone(); pbSync(); } });
+  document.getElementById('pbRot').addEventListener('click', function () { sndTap(); if (window.__PLACE) { window.__PLACE.rotate(); pbSync(); } });
+  document.getElementById('pbCancel').addEventListener('click', function () { sndTap(); if (window.__PLACE) window.__PLACE.cancel(); pbSync(); });
+  shopSheet.querySelectorAll('.shopPlace').forEach(function (b) {
+    b.addEventListener('click', function () {
+      sndTap();
+      if (window.__PLACE && window.__PLACE.start(b.getAttribute('data-id'))) {
+        shopSheet.style.display = 'none';
+        pbSync();
+        if (pbTimer) clearInterval(pbTimer);
+        pbTimer = setInterval(pbSync, 350);
+      }
+    });
+  });
+  window.__PLACEUI = { bar: placeBar, sync: pbSync, refreshPlaced: refreshPlaced };
   var shopTab = document.createElement('button');
   shopTab.type = 'button'; shopTab.className = 'trayBtn'; shopTab.id = 'shopTab';
   shopTab.innerHTML = '<span class="ic">🛍️</span>دکان';
   shopTab.addEventListener('click', function () {
     sndTap();
     shopSheet.style.display = (shopSheet.style.display === 'block') ? 'none' : 'block';
+    if (shopSheet.style.display === 'block' && window.__PLACEUI) window.__PLACEUI.refreshPlaced();
   });
   window.__SHOPUI = { sheet: shopSheet, tab: shopTab };
 
