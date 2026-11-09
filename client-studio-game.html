@@ -502,7 +502,7 @@ function qaCheck(plan){
   if(meta.stackN > 0) rows.push({ t: 'گیلے کمروں کی عمودی سیدھ', s: meta.stackOk === meta.stackN ? 'PASS' : 'WARN', d: meta.stackOk + '/' + meta.stackN + ' باتھ نیچے کے گیلے کمرے پر — باقی کی ڈرین لائن ماہر تصدیق طلب۔' });
   // 8 — scale sanity: habitable rooms not absurdly small
   const tiny = hab.filter(r => r.w < 7 || r.d < 7 || r.w * r.d < 60);
-  rows.push({ t: 'ناپوں کی معقولیت', s: tiny.length ? 'WARN' : 'PASS', d: tiny.length ? ('مشکوک چھوٹے کمرے: ' + tiny.map(r => r.label + ' ' + r.w + '×' + r.d).join('، ') + ' — پیمائش دوبارہ ملائیں۔') : 'کوئی کمرہ غیر معقول حد تک چھوٹا نہیں۔' });
+  rows.push({ t: 'ناپوں کی معقولیت', s: tiny.length ? 'WARN' : 'PASS', d: tiny.length ? ('مشکوک چھوٹے کمرے: ' + tiny.map(r => r.label + ' ' + (Math.round(r.w * 100) / 100) + '×' + (Math.round(r.d * 100) / 100)).join('، ') + ' — پیمائش دوبارہ ملائیں۔') : 'کوئی کمرہ غیر معقول حد تک چھوٹا نہیں۔' });
   return rows;
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromRooms, qaCheck };
@@ -2921,7 +2921,18 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '.trayBtn.on{background:#2e7d4f;border-color:#2e7d4f;color:#fff}' +
     '#todBar{position:fixed;left:50%;transform:translateX(-50%);bottom:176px;z-index:64;display:none;gap:6px;max-width:96vw;padding:6px;background:rgba(255,251,240,.97);border:1.5px solid #C7A252;border-radius:14px;box-shadow:0 6px 18px rgba(60,45,10,.22)}' +
     '.todBtn{flex:0 0 auto;min-height:48px;padding:4px 12px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:13.5px;color:#2b2b26;cursor:pointer;line-height:1.3}' +
-    '.todBtn.on{background:#0C3B2E;border-color:#0C3B2E;color:#F7F3EA}';
+    '.todBtn.on{background:#0C3B2E;border-color:#0C3B2E;color:#F7F3EA}' +
+    '#lockPanel{position:fixed;inset:0;z-index:210;display:none;align-items:center;justify-content:center;background:rgba(60,16,8,.5)}' +
+    '#lockPanel .in{background:#FFFBF0;border:2px solid #b3402f;border-radius:18px;padding:0 0 18px;max-width:348px;width:92vw;box-shadow:0 14px 44px rgba(0,0,0,.35);color:#2b2b26;overflow:hidden}' +
+    '#lockHead{background:#8e2f26;color:#fff;padding:13px 18px;font-size:18px;font-weight:700}' +
+    '#lockBody{padding:13px 18px 0;font-size:14.5px;line-height:1.65}' +
+    '#lockBody ul{margin:8px 0;padding-inline-start:20px}' +
+    '#lockBody li{margin:5px 0}' +
+    '#lockBody .why{color:#6d4a12;background:#fdf3d7;border-radius:10px;padding:9px 11px;margin-top:10px;font-size:14px}' +
+    '#lockBtns{display:flex;gap:8px;padding:14px 18px 0}' +
+    '#lockBack{flex:1;min-height:50px;border:0;border-radius:12px;background:#2e7d4f;color:#fff;font-size:15.5px;font-weight:700;cursor:pointer;font-family:inherit}' +
+    '#lockOver{flex:1;min-height:50px;border:1.6px solid #b3402f;border-radius:12px;background:#fff;color:#8e2f26;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit}' +
+    '#lockOver.armed{background:#b3402f;color:#fff}';
   document.head.appendChild(css);
 
   var MISSIONS = [
@@ -3101,6 +3112,104 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     todBar.appendChild(b);
   });
   window.__TODUI = { el: todBar };
+
+  /* ============ FINALISE LOCK (interview Q24) ============
+     Play is free — but the moment a plan is FINALISED (CAD sheet or the
+     one-page print/PDF), unresolved problems raise the red flag: export
+     stops, the reasons are listed in plain words, and proceeding needs a
+     deliberate double-confirm. A clean plan finalises at once and earns
+     a stamp; any later decision change on that plan voids the stamp. */
+  var lockPanel = document.createElement('div');
+  lockPanel.id = 'lockPanel';
+  lockPanel.innerHTML = '<div class="in"><div id="lockHead">🚩 رکیں — حتمی کرنے سے پہلے</div>' +
+    '<div id="lockBody"></div>' +
+    '<div id="lockBtns"><button id="lockBack" type="button">واپس — پہلے ٹھیک کرتا ہوں</button>' +
+    '<button id="lockOver" type="button">سمجھ گیا — پھر بھی حتمی کریں</button></div></div>';
+  document.body.appendChild(lockPanel);
+  var lockPending = null, lockArmed = false, lockBypassUntil = 0, lockFin = null;
+
+  function lockProblems() {
+    var S = window.__STUDIO, out = { fails: [], warns: [], cautions: [] };
+    if (!S || !S.PLAN) return out;
+    try {
+      (S.PLAN.meta.warnings || []).forEach(function (w) {
+        if (String(w).indexOf('✓') >= 0) return; /* ✓ lines are confirmations, not problems */
+        out.warns.push(String(w));
+      });
+    } catch (e) {}
+    try {
+      (S.qa() || []).forEach(function (r) {
+        if (r.s === 'FAIL') out.fails.push(r.t + ' — ' + r.d);
+        else if (r.s === 'WARN') {
+          /* WARN rows about measurement/geometry doubt (scale sanity,
+             wet-stack alignment) are real problems at finalise; WARN rows
+             that state a standing design condition (exhaust rule) are
+             notes, never a block — alarm fatigue would kill the flag. */
+          if (/معقولیت|سیدھ/.test(r.t)) out.fails.push(r.t + ' — ' + r.d);
+          else out.cautions.push(r.t + ' — ' + r.d);
+        }
+      });
+    } catch (e) {}
+    return out;
+  }
+  function lockOpen(probs, el) {
+    lockPending = el; lockArmed = false;
+    var over = document.getElementById('lockOver');
+    over.classList.remove('armed'); over.textContent = 'سمجھ گیا — پھر بھی حتمی کریں';
+    var items = probs.fails.concat(probs.warns).map(function (x) { return '<li>' + x + '</li>'; }).join('');
+    var caut = probs.cautions.length ? '<p style="margin-top:8px">مزید احتیاط: ' + probs.cautions.join(' · ') + '</p>' : '';
+    document.getElementById('lockBody').innerHTML =
+      '<p>یہ نقشہ ابھی حتمی ہونے کے قابل نہیں لگتا۔ وجہ یہ ہے:</p><ul>' + items + '</ul>' + caut +
+      '<p class="why">بہتر یہی ہے: پہلے یہ نکات ٹھیک کر لیں، پھر حتمی کریں۔ اصل زمین پر غلطی لاکھوں کھا جاتی ہے — یہاں ورچوئل میں ٹھیک کرنا مفت ہے۔</p>';
+    lockPanel.style.display = 'flex';
+    if (!REDUCED) sndDone();
+  }
+  document.getElementById('lockBack').addEventListener('click', function () {
+    lockPanel.style.display = 'none'; lockPending = null;
+  });
+  document.getElementById('lockOver').addEventListener('click', function () {
+    if (!lockArmed) {
+      lockArmed = true;
+      this.classList.add('armed');
+      this.textContent = 'یقینی ہیں؟ دوبارہ دبائیں — حتمی ہو جائے گا';
+      return;
+    }
+    lockPanel.style.display = 'none';
+    var el = lockPending; lockPending = null;
+    if (el) { lockBypassUntil = Date.now() + 1500; el.click(); }
+  });
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    /* a decision change voids a previous finalise stamp */
+    if (lockFin && (t.closest('#elevBar') || t.closest('#finList') || t.closest('#finRoom') ||
+        t.closest('#galleryPanel') || t.closest('#designBars') ||
+        (t.classList && (t.classList.contains('chip') || t.classList.contains('vchip'))))) {
+      if (!window.__STUDIO || window.__STUDIO.PLAN !== lockFin.plan) lockFin = null;
+      else lockFin = null; /* same plan, new decision — stamp void either way */
+    }
+    var fin = t.closest('#mCad') || t.closest('#mPrint');
+    if (!fin) return;
+    if (Date.now() < lockBypassUntil) { /* deliberate override — let it through, stamp it */
+      var S1 = window.__STUDIO;
+      lockFin = { at: Date.now(), plan: S1 ? S1.PLAN : null, via: fin.id };
+      return;
+    }
+    var S = window.__STUDIO;
+    if (!S || !S.PLAN) return; /* Studio's own guard speaks */
+    var probs = lockProblems();
+    if (probs.fails.length || probs.warns.length) {
+      e.stopPropagation(); e.preventDefault();
+      lockOpen(probs, fin);
+    } else {
+      lockFin = { at: Date.now(), plan: S.PLAN, via: fin.id };
+    }
+  }, true);
+  window.__LOCK = {
+    problems: lockProblems,
+    fin: function () { return lockFin; },
+    panelOpen: function () { return lockPanel.style.display === 'flex'; }
+  };
 
   window.__QUEST = { done: function () { return Object.assign({}, done); }, count: function () { return Object.keys(done).length; } };
   window.__TRAY = { built: function () { return trayBuilt; }, active: function () { return trayActive; } };

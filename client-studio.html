@@ -502,7 +502,7 @@ function qaCheck(plan){
   if(meta.stackN > 0) rows.push({ t: 'گیلے کمروں کی عمودی سیدھ', s: meta.stackOk === meta.stackN ? 'PASS' : 'WARN', d: meta.stackOk + '/' + meta.stackN + ' باتھ نیچے کے گیلے کمرے پر — باقی کی ڈرین لائن ماہر تصدیق طلب۔' });
   // 8 — scale sanity: habitable rooms not absurdly small
   const tiny = hab.filter(r => r.w < 7 || r.d < 7 || r.w * r.d < 60);
-  rows.push({ t: 'ناپوں کی معقولیت', s: tiny.length ? 'WARN' : 'PASS', d: tiny.length ? ('مشکوک چھوٹے کمرے: ' + tiny.map(r => r.label + ' ' + r.w + '×' + r.d).join('، ') + ' — پیمائش دوبارہ ملائیں۔') : 'کوئی کمرہ غیر معقول حد تک چھوٹا نہیں۔' });
+  rows.push({ t: 'ناپوں کی معقولیت', s: tiny.length ? 'WARN' : 'PASS', d: tiny.length ? ('مشکوک چھوٹے کمرے: ' + tiny.map(r => r.label + ' ' + (Math.round(r.w * 100) / 100) + '×' + (Math.round(r.d * 100) / 100)).join('، ') + ' — پیمائش دوبارہ ملائیں۔') : 'کوئی کمرہ غیر معقول حد تک چھوٹا نہیں۔' });
   return rows;
 }
 if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromRooms, qaCheck };
