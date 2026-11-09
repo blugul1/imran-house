@@ -3020,7 +3020,22 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '.shopD{font-size:12.5px;color:#6a6353;line-height:1.5;margin:3px 0 8px}' +
     '.shopBtns{display:flex;gap:6px}' +
     '.shopShow{flex:1;min-height:44px;border:0;border-radius:9px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}' +
-    '.shopWa{flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;border:1.4px solid #2e7d4f;border-radius:9px;background:#fff;color:#20513a;font-size:13.5px;font-weight:700;text-decoration:none}';
+    '.shopWa{flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;border:1.4px solid #2e7d4f;border-radius:9px;background:#fff;color:#20513a;font-size:13.5px;font-weight:700;text-decoration:none}' +
+    '#coordBtn{display:block;width:100%;margin-top:9px;min-height:46px;border:1.4px solid #0C3B2E;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}' +
+    '#coordPanel{position:fixed;inset:0;z-index:210;display:none;align-items:center;justify-content:center;background:rgba(20,30,40,.5)}' +
+    '#coordPanel .in{background:#FFFBF0;border:2px solid #0C3B2E;border-radius:18px;width:92vw;max-width:352px;max-height:88vh;overflow-y:auto;box-shadow:0 14px 44px rgba(0,0,0,.35);color:#2b2b26}' +
+    '#coordHead{background:#0C3B2E;color:#F7F3EA;padding:13px 18px;font-size:17px;font-weight:700;border-radius:16px 16px 0 0}' +
+    '#coordBody{padding:13px 18px 18px;font-size:14.5px;line-height:1.65}' +
+    '#coordBody .cn{color:#5c5546;font-size:13.5px}' +
+    '.crow{display:flex;gap:8px;margin-top:10px}' +
+    '.crow label{flex:1;font-size:13px;color:#5c5546}' +
+    '.crow input{width:100%;box-sizing:border-box;min-height:48px;border:1.4px solid #cbb26a;border-radius:10px;padding:6px 10px;font-size:16px;font-family:inherit;background:#fff;color:#2b2b26}' +
+    '#cSample{flex:1;min-height:48px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:14px;cursor:pointer}' +
+    '#cGo{flex:1;min-height:48px;border:0;border-radius:10px;background:#2e7d4f;color:#fff;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer}' +
+    '#coordOut{margin-top:12px;font-size:14.5px}' +
+    '#coordOut .cr{margin:6px 0}' +
+    '#coordOut .honest{color:#6d4a12;background:#fdf3d7;border-radius:10px;padding:9px 11px;font-size:13.5px;margin-top:10px}' +
+    '#coordClose{width:100%;margin-top:12px;min-height:48px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:14.5px;cursor:pointer}';
   document.head.appendChild(css);
 
   var MISSIONS = [
@@ -3037,7 +3052,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   card.innerHTML = '<div id="questHead"><span>🎯 آج کے مشن</span><span id="questLvl">0/5</span></div>' +
     '<div id="questBody">' +
     MISSIONS.map(function (m) { return '<div class="qm" id="q_' + m.id + '"><span class="box"></span><span class="txt">' + m.txt + '</span></div>'; }).join('') +
-    '<div id="questBar"><div id="questFill"></div></div></div>';
+    '<div id="questBar"><div id="questFill"></div></div>' +
+    '<button id="coordBtn" type="button">📍 مقام رپورٹ — نقاط سے</button></div>';
   document.body.appendChild(card);
 
   var doneEl = document.createElement('div');
@@ -3340,6 +3356,94 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     shopSheet.style.display = (shopSheet.style.display === 'block') ? 'none' : 'block';
   });
   window.__SHOPUI = { sheet: shopSheet, tab: shopTab };
+
+  /* ============ COORDINATES INTAKE — slice 1 (interview Q1) ============
+     Lat/lng -> sun times, solstice sunrise directions and Qibla bearing,
+     computed ON THE DEVICE (pure maths — the coordinates never leave the
+     phone). Online enrichment (weather, surroundings) is a later slice
+     and will ask first, per the Q25 privacy rule. Numbers are planning
+     estimates (±~1°, ±10 min), labelled as such in the report itself. */
+  var coordPanel = document.createElement('div');
+  coordPanel.id = 'coordPanel';
+  coordPanel.innerHTML = '<div class="in"><div id="coordHead">📍 مقام رپورٹ — نقاط سے</div>' +
+    '<div id="coordBody"><p class="cn">اپنے پلاٹ کے گوگل میپ نقاط لکھیں — سورج، سمتیں اور قبلہ رخ اسی فون پر نکلے گا؛ نقاط کہیں نہیں جاتے۔</p>' +
+    '<div class="crow"><label>عرض البلد (Latitude)<input id="cLat" inputmode="decimal" placeholder="32.9754"></label>' +
+    '<label>طول البلد (Longitude)<input id="cLng" inputmode="decimal" placeholder="74.0377"></label></div>' +
+    '<div class="crow"><button id="cSample" type="button">بھمبر — نمونہ نقاط</button><button id="cGo" type="button">رپورٹ بنائیں</button></div>' +
+    '<div id="coordOut"></div>' +
+    '<button id="coordClose" type="button">بند کریں</button></div></div>';
+  document.body.appendChild(coordPanel);
+  document.getElementById('coordBtn').addEventListener('click', function () { sndTap(); coordPanel.style.display = 'flex'; });
+  document.getElementById('coordClose').addEventListener('click', function () { coordPanel.style.display = 'none'; });
+  document.getElementById('cSample').addEventListener('click', function () {
+    document.getElementById('cLat').value = '32.975459';
+    document.getElementById('cLng').value = '74.037752';
+    document.getElementById('cGo').click();
+  });
+
+  var WINDS = ['شمال', 'شمال مشرق', 'مشرق', 'جنوب مشرق', 'جنوب', 'جنوب مغرب', 'مغرب', 'شمال مغرب'];
+  function windOf(az) { return WINDS[Math.round((((az % 360) + 360) % 360) / 45) % 8]; }
+  function fmtT(h) {
+    h = ((h % 24) + 24) % 24;
+    var hh = Math.floor(h), mm = Math.round((h - hh) * 60);
+    if (mm === 60) { mm = 0; hh = (hh + 1) % 24; }
+    return (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+  function coordReport(lat, lng) {
+    var rad = Math.PI / 180, phi = lat * rad;
+    var now = new Date();
+    var start = new Date(now.getFullYear(), 0, 0);
+    var N = Math.floor((now - start) / 86400000);
+    var decl = -23.44 * Math.cos((360 / 365) * (N + 10) * rad) * rad;
+    var B = (360 / 365) * (N - 81) * rad;
+    var eot = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B); /* minutes */
+    var tz = Math.round(lng / 15);
+    var noon = 12 - eot / 60 - lng / 15 + tz; /* local clock time of solar noon */
+    function riseSet(d) {
+      var cH = -Math.tan(phi) * Math.tan(d);
+      if (cH < -1 || cH > 1) return null;
+      var H = Math.acos(cH) / rad / 15; /* hours */
+      var cA = Math.sin(d) / Math.cos(phi);
+      var az = Math.acos(Math.max(-1, Math.min(1, cA))) / rad;
+      return { rise: noon - H, set: noon + H, azRise: az, azSet: 360 - az };
+    }
+    var today = riseSet(decl);
+    var summer = riseSet(23.44 * rad), winter = riseSet(-23.44 * rad);
+    var phiK = 21.4225 * rad, dLam = (39.8262 - lng) * rad;
+    var qib = Math.atan2(Math.sin(dLam), Math.cos(phi) * Math.tan(phiK) - Math.sin(phi) * Math.cos(dLam)) / rad;
+    qib = ((qib % 360) + 360) % 360;
+    return { today: today, summerAz: summer ? summer.azRise : null, winterAz: winter ? winter.azRise : null, qibla: qib };
+  }
+  function compassSVG(r) {
+    function pt(az, dist) { var a = az * Math.PI / 180; return [60 + dist * Math.sin(a), 60 - dist * Math.cos(a)]; }
+    var s = pt(r.summerAz, 50), w = pt(r.winterAz, 50), q = pt(r.qibla, 42);
+    return '<svg width="120" height="120" viewBox="0 0 120 120" style="display:block;margin:8px auto">' +
+      '<circle cx="60" cy="60" r="52" fill="#f4ecd9" stroke="#C7A252" stroke-width="2"/>' +
+      '<text x="60" y="16" text-anchor="middle" font-size="12" font-weight="700" fill="#8e2f26">N</text>' +
+      '<circle cx="' + s[0].toFixed(1) + '" cy="' + s[1].toFixed(1) + '" r="5" fill="#e8a13a"/>' +
+      '<circle cx="' + w[0].toFixed(1) + '" cy="' + w[1].toFixed(1) + '" r="5" fill="#7a9bb5"/>' +
+      '<line x1="60" y1="60" x2="' + q[0].toFixed(1) + '" y2="' + q[1].toFixed(1) + '" stroke="#0C3B2E" stroke-width="3"/>' +
+      '<circle cx="60" cy="60" r="3.5" fill="#0C3B2E"/></svg>';
+  }
+  document.getElementById('cGo').addEventListener('click', function () {
+    var lat = parseFloat(document.getElementById('cLat').value);
+    var lng = parseFloat(document.getElementById('cLng').value);
+    var out = document.getElementById('coordOut');
+    if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      out.innerHTML = '<p class="cr">نقاط درست لکھیں — جیسے عرض البلد 32.9754 اور طول البلد 74.0377۔ گوگل میپ میں اپنے پلاٹ پر لمبا دبائیں، نیچے یہی دو نمبر لکھے آئیں گے۔</p>';
+      return;
+    }
+    var r = coordReport(lat, lng);
+    var html = '';
+    if (r.today) html += '<p class="cr">☀️ آج: طلوع <b>' + fmtT(r.today.rise) + '</b> · غروب <b>' + fmtT(r.today.set) + '</b> — سورج <b>' + windOf(r.today.azRise) + '</b> (' + Math.round(r.today.azRise) + '°) سے نکلے گا۔</p>';
+    if (r.summerAz != null) html += '<p class="cr">🌞 گرمیوں میں طلوع: <b>' + windOf(r.summerAz) + '</b> (' + Math.round(r.summerAz) + '°) · سردیوں میں: <b>' + windOf(r.winterAz) + '</b> (' + Math.round(r.winterAz) + '°) — دھوپ اور روشن دانوں کی سمت طے کرنے کے لیے یہی دو انتہائیں کام آتی ہیں۔</p>';
+    html += '<p class="cr">🕋 قبلہ رخ: <b>' + Math.round(r.qibla) + '°</b> — ' + windOf(r.qibla) + ' کی طرف۔</p>';
+    html += compassSVG(r);
+    html += '<p class="honest">یہ فارمولے کا اندازہ ہے (±1°، وقت میں ±10 منٹ) — منصوبہ بندی کے لیے۔ موسم اور آس پاس کی رپورٹ اگلے مرحلے میں آئے گی۔ آپ کے نقاط اس فون سے باہر نہیں گئے۔</p>';
+    out.innerHTML = html;
+    sndDone();
+  });
+  window.__COORD = { report: coordReport };
 
   window.__QUEST = { done: function () { return Object.assign({}, done); }, count: function () { return Object.keys(done).length; } };
   window.__TRAY = { built: function () { return trayBuilt; }, active: function () { return trayActive; } };
