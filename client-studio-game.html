@@ -1207,6 +1207,82 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     buildBricks();
     mergeStatic(); /* GAME MAX: draw-call merge, after bricks, before MEP */
     buildMEP(plan);
+    /* ==== GAME: department showroom (G2 v1, interview Q31) ====
+       Display-only previews on a platform beside the house: browse BBB
+       department pieces, see each standing in 3D, talk/order on WhatsApp.
+       Never part of the measured plan, never priced in-app. */
+    try {
+      if (window.__SHOPG && window.__SHOPG.parent) window.__SHOPG.parent.remove(window.__SHOPG);
+      const SG = new THREE.Group(); scene.add(SG); window.__SHOPG = SG;
+      const bb = new THREE.Box3().setFromObject(HOUSE);
+      const PX = bb.max.x + 13, PZ = (bb.min.z + bb.max.z) / 2, PY = 0.36;
+      B(SG, PX, 0.18, PZ, 17, 0.36, 12, M(0xcfc4ae, { roughness: 1 }));
+      const steelM = M(0x2f3236, { roughness: 0.5, metalness: 0.6 });
+      const aluM = M(0xc7ccd4, { roughness: 0.38, metalness: 0.25 });
+      const goldM = M(0xC7A252, { roughness: 0.3, metalness: 0.8 });
+      const woodM = M(0x8a5a33, { roughness: 0.8 });
+      const glassM = M(0xa8c8d8, { roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.35 });
+      let itemG = null, curItem = null;
+      const BUILDERS = {
+        gate: function (g) {
+          for (const sx of [-3.55, 3.55]) B(g, sx, 2.95, 0, 0.4, 5.9, 0.4, steelM);
+          for (const pc of [-1.78, 1.78]) {
+            B(g, pc, 5.25, 0, 3.3, 0.32, 0.16, steelM);
+            B(g, pc, 0.55, 0, 3.3, 0.32, 0.16, steelM);
+            for (let i = 0; i < 5; i++) B(g, pc - 1.3 + i * 0.65, 2.9, 0, 0.15, 4.4, 0.15, steelM);
+          }
+        },
+        door: function (g) {
+          for (const sx of [-1.65, 1.65]) B(g, sx, 3.6, 0, 0.35, 7.2, 0.55, woodM);
+          B(g, 0, 7.05, 0, 3.65, 0.35, 0.55, woodM);
+          B(g, 0, 3.5, 0, 3.0, 6.8, 0.28, M(0x96683d, { roughness: 0.8 }));
+          B(g, 0, 5.1, 0.2, 2.1, 2.3, 0.1, woodM);
+          B(g, 0, 1.95, 0.2, 2.1, 2.3, 0.1, woodM);
+          const knob = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), goldM); knob.position.set(1.2, 3.5, 0.3); g.add(knob);
+        },
+        window: function (g) {
+          for (const sx of [-1.9, 1.9]) B(g, sx, 0.5, 0, 0.3, 1.0, 0.5, aluM);
+          B(g, 0, 1.05, 0, 4.1, 0.28, 0.22, aluM); B(g, 0, 5.15, 0, 4.1, 0.28, 0.22, aluM);
+          B(g, -2.0, 3.1, 0, 0.28, 4.3, 0.22, aluM); B(g, 2.0, 3.1, 0, 0.28, 4.3, 0.22, aluM);
+          B(g, 0, 3.1, 0, 0.16, 4.3, 0.14, aluM); B(g, 0, 3.1, 0, 4.1, 0.16, 0.14, aluM);
+          B(g, 0, 3.1, 0, 3.8, 3.9, 0.05, glassM);
+        },
+        kitchen: function (g) {
+          B(g, 0, 1.45, 0, 7, 2.9, 2, aluM);
+          for (const dx of [-2.3, 0, 2.3]) B(g, dx, 1.45, 1.04, 2.1, 2.5, 0.06, M(0x9aa2ab, { roughness: 0.4, metalness: 0.6 }));
+          B(g, 0, 3.02, 0, 7.5, 0.2, 2.4, M(0xe8e2d2, { roughness: 0.3 }));
+          B(g, -1.2, 3.14, 0.2, 2.2, 0.1, 1.4, M(0x6a7076, { roughness: 0.3, metalness: 0.7 }));
+          const fc = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.1, 8), aluM); fc.position.set(-1.2, 3.7, -0.5); g.add(fc);
+          for (const dx of [-2.3, 0, 2.3]) B(g, dx, 5.5, -0.5, 2.1, 2.3, 1.0, aluM);
+        },
+        railing: function (g) {
+          const hs = [2.2, 2.9, 3.6, 4.3];
+          hs.forEach(function (h, i) { B(g, -2.7 + i * 1.8, h / 2, 0, 0.22, h, 0.22, steelM); });
+          const rail = B(g, 0, 3.42, 0, 6.4, 0.22, 0.3, goldM); rail.rotation.z = 0.371;
+          const mid = B(g, 0, 1.72, 0, 6.4, 0.12, 0.14, steelM); mid.rotation.z = 0.371;
+        },
+        sofa: function (g) {
+          const fab = M(0x7a9bb5, { roughness: 1 }), fab2 = M(0x93b4cc, { roughness: 1 });
+          B(g, 0, 0.75, 0, 6, 1.5, 2.8, fab);
+          B(g, 0, 2.2, -1.05, 6, 2.2, 0.8, fab);
+          for (const sx of [-2.75, 2.75]) B(g, sx, 1.6, 0, 0.9, 1.9, 2.8, fab);
+          for (const sx of [-1.45, 1.45]) { B(g, sx, 1.65, 0.15, 2.6, 0.45, 2.2, fab2); B(g, sx, 2.5, -0.75, 2.6, 1.3, 0.35, fab2); }
+        }
+      };
+      window.__SHOP = {
+        ids: Object.keys(BUILDERS),
+        show: function (id) {
+          if (!BUILDERS[id]) return false;
+          if (itemG) { SG.remove(itemG); itemG = null; }
+          itemG = new THREE.Group(); itemG.position.set(PX, PY, PZ); itemG.rotation.y = 0.45; SG.add(itemG);
+          BUILDERS[id](itemG); curItem = id;
+          try { camTg.set(PX, 3, PZ); orb.sph.radius = 36; orb.sph.phi = 1.02; orb.sph.theta = 0.7; applyCam(); } catch (e) {}
+          return true;
+        },
+        clear: function () { if (itemG) { SG.remove(itemG); itemG = null; } curItem = null; },
+        cur: function () { return curItem; }
+      };
+    } catch (e) {}
     summary(spec);
     buildRoomList(plan);
     if(window.__PERSIST) window.__PERSIST.save();
@@ -2932,7 +3008,19 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#lockBtns{display:flex;gap:8px;padding:14px 18px 0}' +
     '#lockBack{flex:1;min-height:50px;border:0;border-radius:12px;background:#2e7d4f;color:#fff;font-size:15.5px;font-weight:700;cursor:pointer;font-family:inherit}' +
     '#lockOver{flex:1;min-height:50px;border:1.6px solid #b3402f;border-radius:12px;background:#fff;color:#8e2f26;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit}' +
-    '#lockOver.armed{background:#b3402f;color:#fff}';
+    '#lockOver.armed{background:#b3402f;color:#fff}' +
+    '#shopSheet{position:fixed;left:0;right:0;bottom:0;z-index:90;display:none;background:#FFFBF0;border-top:2px solid #C7A252;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(60,45,10,.3);max-height:52vh;overflow-y:auto;padding:12px 14px 18px;color:#2b2b26}' +
+    '#shopHead{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16.5px}' +
+    '#shopClose{min-height:44px;padding:6px 14px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:13.5px;cursor:pointer}' +
+    '#shopNote{font-size:13.5px;line-height:1.6;color:#5c5546;margin:8px 0 10px}' +
+    '#shopGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}' +
+    '.shopCard{border:1.5px solid #e0d3a8;border-radius:12px;padding:9px 10px;background:#fff}' +
+    '.shopCard.on{border-color:#0C3B2E;background:#f2f7f0}' +
+    '.shopNm{font-weight:700;font-size:15px}' +
+    '.shopD{font-size:12.5px;color:#6a6353;line-height:1.5;margin:3px 0 8px}' +
+    '.shopBtns{display:flex;gap:6px}' +
+    '.shopShow{flex:1;min-height:44px;border:0;border-radius:9px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer}' +
+    '.shopWa{flex:1;min-height:44px;display:flex;align-items:center;justify-content:center;border:1.4px solid #2e7d4f;border-radius:9px;background:#fff;color:#20513a;font-size:13.5px;font-weight:700;text-decoration:none}';
   document.head.appendChild(css);
 
   var MISSIONS = [
@@ -3061,6 +3149,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       });
       tray.appendChild(b);
     });
+    if (typeof shopTab !== 'undefined' && shopTab) tray.appendChild(shopTab);
     trayBuilt = true;
     tray.style.display = 'flex';
     var tb = document.getElementById('todBar');
@@ -3210,6 +3299,47 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     fin: function () { return lockFin; },
     panelOpen: function () { return lockPanel.style.display === 'flex'; }
   };
+
+  /* ============ DEPARTMENT SHOWROOM UI (G2 v1, interview Q31) ============
+     A «دکان» tab on the building tray opens the catalogue sheet. Items
+     are display samples: tap to stand the piece beside the house in 3D,
+     then talk/order on BBB WhatsApp. No prices in-app — by design. */
+  var SHOPCAT = [
+    { id: 'gate', nm: 'اسٹیل گیٹ', d: 'دو پلّوں والا نمونہ — سائز آپ کے ناپ سے بنے گا' },
+    { id: 'door', nm: 'لکڑی کا دروازہ', d: 'نمونہ ڈیزائن — لکڑی و نقش آپ کی پسند سے' },
+    { id: 'window', nm: 'ایلومینیم کھڑکی', d: 'شیشے سمیت نمونہ فریم — ناپ آپ کی کھڑکی کا' },
+    { id: 'kitchen', nm: 'ایلومینیم کچن', d: 'کاؤنٹر و الماریوں کا نمونہ سیٹ' },
+    { id: 'railing', nm: 'سیڑھی کی ریلنگ', d: 'اسٹیل نمونہ — لمبائی سیڑھی کے حساب سے' },
+    { id: 'sofa', nm: 'صوفہ سیٹ', d: 'فرنیچر نمونہ — رنگ و کپڑا آپ کی پسند' }
+  ];
+  var shopSheet = document.createElement('div');
+  shopSheet.id = 'shopSheet';
+  shopSheet.innerHTML = '<div id="shopHead"><span>🛍️ بی بی بی دکان — نمونے</span><button id="shopClose" type="button">✕ بند کریں</button></div>' +
+    '<p id="shopNote">یہ نمونے ہیں — اصل چیز آپ کے ناپ و پسند سے بنے گی۔ قیمت بات کر کے طے ہو گی۔ کوئی چیز دبائیں، وہ گھر کے ساتھ کھڑی نظر آئے گی۔</p>' +
+    '<div id="shopGrid">' + SHOPCAT.map(function (it) {
+      return '<div class="shopCard" data-id="' + it.id + '"><div class="shopNm">' + it.nm + '</div><div class="shopD">' + it.d + '</div>' +
+        '<div class="shopBtns"><button class="shopShow" type="button" data-id="' + it.id + '">👁 دکھائیں</button>' +
+        '<a class="shopWa" target="_blank" rel="noopener" href="https://wa.me/923179222029?text=' +
+        encodeURIComponent('السلام علیکم! مجھے «' + it.nm + '» کے بارے میں بات کرنی ہے۔ (گھر دیکھو ایپ سے)') + '">📲 بات کریں</a></div></div>';
+    }).join('') + '</div>';
+  document.body.appendChild(shopSheet);
+  document.getElementById('shopClose').addEventListener('click', function () { shopSheet.style.display = 'none'; });
+  shopSheet.querySelectorAll('.shopShow').forEach(function (b) {
+    b.addEventListener('click', function () {
+      sndTap();
+      if (window.__SHOP && window.__SHOP.show(b.getAttribute('data-id'))) {
+        shopSheet.querySelectorAll('.shopCard').forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-id') === b.getAttribute('data-id')); });
+      }
+    });
+  });
+  var shopTab = document.createElement('button');
+  shopTab.type = 'button'; shopTab.className = 'trayBtn'; shopTab.id = 'shopTab';
+  shopTab.innerHTML = '<span class="ic">🛍️</span>دکان';
+  shopTab.addEventListener('click', function () {
+    sndTap();
+    shopSheet.style.display = (shopSheet.style.display === 'block') ? 'none' : 'block';
+  });
+  window.__SHOPUI = { sheet: shopSheet, tab: shopTab };
 
   window.__QUEST = { done: function () { return Object.assign({}, done); }, count: function () { return Object.keys(done).length; } };
   window.__TRAY = { built: function () { return trayBuilt; }, active: function () { return trayActive; } };
