@@ -602,6 +602,31 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     const gravelTex = speck('#c9c1ad', ['#b8ae99', '#d6cfbc', '#a99f88'], 750); gravelTex.repeat.set(0.055, 0.055); window.__GRAVEL = gravelTex;
     function skyTex(top, mid, bot) { const c = document.createElement('canvas'); c.width = 4; c.height = 256; const v = c.getContext('2d'); const g = v.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, top); g.addColorStop(0.55, mid); g.addColorStop(1, bot); v.fillStyle = g; v.fillRect(0, 0, 4, 256); return new THREE.CanvasTexture(c); }
     const skyDay = skyTex('#5f9bd6', '#a8c8e4', '#e8f1f4'), skyDusk = skyTex('#101c3a', '#33477a', '#141f38');
+    const skyMorning = skyTex('#79a6d2', '#c3dcee', '#f4ecd9'), skyGolden = skyTex('#5d74a8', '#e99e5f', '#ffc98a');
+    /* Time-of-day presets: one sun, fog matched to the horizon, hemi fill.
+       Ambience only — never touches the measured plan. */
+    const TODP = {
+      morning: { sky: skyMorning, fog: 0xe8eee6, sun: 0xffe3b3, si: 0.85, pos: [-105, 58, -30], hemi: 1.0 },
+      day: { sky: skyDay, fog: 0xdcebf2, sun: 0xffffff, si: 0.95, pos: [-70, 110, -50], hemi: 1.1 },
+      golden: { sky: skyGolden, fog: 0xf0cf9f, sun: 0xffbe78, si: 0.8, pos: [118, 25, -34], hemi: 0.85 },
+      night: { sky: skyDusk, fog: 0x141f38, sun: 0x9fb6dd, si: 0.18, pos: [-40, 90, 60], hemi: 0.5 }
+    };
+    window.__TOD = {
+      cur: 'day',
+      set: function (name) {
+        const p = TODP[name]; if (!p) return false;
+        window.__TOD.cur = name; window.__TODACTIVE = (name !== 'day');
+        try {
+          if (window.__SKY) { __SKY.material.map = p.sky; __SKY.material.needsUpdate = true; }
+          if (scene.fog) scene.fog.color.set(p.fog);
+          if (scene.background && scene.background.set) scene.background.set(p.fog);
+          dl.color.set(p.sun); dl.intensity = p.si; dl.position.set(p.pos[0], p.pos[1], p.pos[2]);
+          hemi.intensity = p.hemi;
+          if (typeof state !== 'undefined' && state) state.dusk = (name === 'night');
+        } catch (e) {}
+        return true;
+      }
+    };
     const sky = new THREE.Mesh(new THREE.SphereGeometry(880, 20, 12), new THREE.MeshBasicMaterial({ map: skyDay, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -10; sky.userData.keep = true; ENVG.add(sky); window.__SKY = sky;
     const gnd = new THREE.Mesh(new THREE.CircleGeometry(620, 44), M(0xffffff, { roughness: 1, map: lawnTex })); gnd.rotation.x = -Math.PI / 2; gnd.position.y = -0.07; gnd.receiveShadow = true; gnd.userData.keep = true; ENVG.add(gnd);
     const rdG = new THREE.Group(); ENVG.add(rdG);
@@ -720,8 +745,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         const S = window.__STUDIO;
         if (S && S.PLAN && S.PLAN.meta) rdG.position.z = -(S.PLAN.meta.depth / 2);
         ENVG.visible = !(typeof state !== 'undefined' && state && state.floor === 'basement');
-        if (scene.fog && typeof state !== 'undefined' && state) scene.fog.color.set(state.dusk ? 0x141f38 : 0xdcebf2);
-        if (window.__SKY && typeof state !== 'undefined' && state) { const want = state.dusk ? skyDusk : skyDay; if (__SKY.material.map !== want) { __SKY.material.map = want; __SKY.material.needsUpdate = true; } }
+        if (!window.__TODACTIVE && scene.fog && typeof state !== 'undefined' && state) scene.fog.color.set(state.dusk ? 0x141f38 : 0xdcebf2);
+        if (!window.__TODACTIVE && window.__SKY && typeof state !== 'undefined' && state) { const want = state.dusk ? skyDusk : skyDay; if (__SKY.material.map !== want) { __SKY.material.map = want; __SKY.material.needsUpdate = true; } }
       } catch (e) {}
     }, 700);
   } catch (e) { /* environment is ambience; never a blocker */ }
@@ -2893,7 +2918,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#trayBar{position:fixed;left:50%;transform:translateX(-50%);bottom:118px;z-index:64;display:none;gap:6px;max-width:96vw;overflow-x:auto;padding:6px;background:rgba(255,251,240,.97);border:1.5px solid #C7A252;border-radius:14px;box-shadow:0 6px 18px rgba(60,45,10,.22)}' +
     '.trayBtn{flex:0 0 auto;min-height:48px;min-width:56px;padding:4px 8px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:12.5px;color:#2b2b26;cursor:pointer;line-height:1.3}' +
     '.trayBtn .ic{display:block;font-size:19px;line-height:1.15}' +
-    '.trayBtn.on{background:#2e7d4f;border-color:#2e7d4f;color:#fff}';
+    '.trayBtn.on{background:#2e7d4f;border-color:#2e7d4f;color:#fff}' +
+    '#todBar{position:fixed;left:50%;transform:translateX(-50%);bottom:176px;z-index:64;display:none;gap:6px;max-width:96vw;padding:6px;background:rgba(255,251,240,.97);border:1.5px solid #C7A252;border-radius:14px;box-shadow:0 6px 18px rgba(60,45,10,.22)}' +
+    '.todBtn{flex:0 0 auto;min-height:48px;padding:4px 12px;border:1.4px solid #cbb26a;border-radius:10px;background:#fff;font-family:inherit;font-size:13.5px;color:#2b2b26;cursor:pointer;line-height:1.3}' +
+    '.todBtn.on{background:#0C3B2E;border-color:#0C3B2E;color:#F7F3EA}';
   document.head.appendChild(css);
 
   var MISSIONS = [
@@ -3024,6 +3052,8 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     });
     trayBuilt = true;
     tray.style.display = 'flex';
+    var tb = document.getElementById('todBar');
+    if (tb) tb.style.display = 'flex';
   }
   setInterval(function () {
     var S = window.__STUDIO;
@@ -3047,6 +3077,30 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       }
     }
   }, 500);
+
+  /* ============ TIME OF DAY (living-environment wave 1) ============
+     Four presets over the game's own sky/sun/fog (window.__TOD, defined
+     by the game build's environment patch). Pure ambience: never touches
+     the plan, the stages or the estimate. Shown with the building tray. */
+  var todBar = document.createElement('div');
+  todBar.id = 'todBar';
+  document.body.appendChild(todBar);
+  var TODBTN = [
+    ['morning', '🌅 صبح'], ['day', '☀️ دوپہر'], ['golden', '🌇 سنہری شام'], ['night', '🌙 رات']
+  ];
+  TODBTN.forEach(function (tb) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'todBtn' + (tb[0] === 'day' ? ' on' : '');
+    b.setAttribute('data-tod', tb[0]); b.textContent = tb[1];
+    b.addEventListener('click', function () {
+      sndTap();
+      if (window.__TOD && window.__TOD.set(tb[0])) {
+        todBar.querySelectorAll('.todBtn').forEach(function (x) { x.classList.toggle('on', x === b); });
+      }
+    });
+    todBar.appendChild(b);
+  });
+  window.__TODUI = { el: todBar };
 
   window.__QUEST = { done: function () { return Object.assign({}, done); }, count: function () { return Object.keys(done).length; } };
   window.__TRAY = { built: function () { return trayBuilt; }, active: function () { return trayActive; } };
