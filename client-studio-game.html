@@ -1476,6 +1476,27 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         });
         window.addEventListener('keyup', function (e) { KEYS_HELD[e.code] = false; });
         window.addEventListener('blur', function () { for (const k in KEYS_HELD) KEYS_HELD[k] = false; });
+        /* walk zoom: scroll wheel = FOV zoom (the orbit radius stays locked
+           at the eye); two-finger pinch does the same on touch screens. */
+        window.addEventListener('wheel', function (e) {
+          const W = window.__WALK; if (!W || !W.on) return;
+          e.preventDefault(); W.zoom(e.deltaY > 0 ? 5 : -5);
+        }, { passive: false });
+        const TP = {};
+        let pinchD = 0;
+        document.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch') TP[e.pointerId] = { x: e.clientX, y: e.clientY }; });
+        document.addEventListener('pointermove', function (e) {
+          if (e.pointerType !== 'touch' || !TP[e.pointerId]) return;
+          TP[e.pointerId] = { x: e.clientX, y: e.clientY };
+          const W = window.__WALK; if (!W || !W.on) return;
+          const ps = Object.values(TP); if (ps.length !== 2) return;
+          const d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+          if (pinchD > 0) W.zoom((pinchD - d) * 0.09);
+          pinchD = d;
+        });
+        const tpEnd = function (e) { delete TP[e.pointerId]; if (Object.keys(TP).length < 2) pinchD = 0; };
+        document.addEventListener('pointerup', tpEnd);
+        document.addEventListener('pointercancel', tpEnd);
       }
       window.__KEYS = {
         held: function () { return Object.keys(KEYS_HELD).filter(function (k) { return KEYS_HELD[k]; }); },
@@ -1540,10 +1561,16 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         camTg.set(nx - off.x, (BASES[WALK.fk] || 0) + EYE_H - off.y, nz - off.z);
         applyCam();
       };
+      WALK.zoom = function (d) {
+        if (!WALK.on) return;
+        WALK.fov = Math.max(24, Math.min(60, (WALK.fov || 46) + d));
+        camera.fov = WALK.fov; camera.updateProjectionMatrix();
+      };
       WALK.enter = function () {
         if (WALK.on) return;
         WALK.saved = { r: orb.sph.radius, p: orb.sph.phi, t: orb.sph.theta, tg: camTg.clone() };
         WALK.on = true;
+        WALK.fov = 46; camera.fov = 46; camera.updateProjectionMatrix();
         WALK.fk = (state.floor && state.floor !== 'all') ? state.floor : 'ground';
         buildWalkData();
         let start = null;
@@ -1563,6 +1590,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       WALK.exit = function () {
         if (!WALK.on) return;
         WALK.on = false;
+        camera.fov = 46; camera.updateProjectionMatrix(); WALK.fov = 46;
         if (WALK.saved) { orb.sph.radius = WALK.saved.r; orb.sph.phi = WALK.saved.p; orb.sph.theta = WALK.saved.t; camTg.copy(WALK.saved.tg); }
         applyCam();
         if (window.__WALKUI) window.__WALKUI.sync();
@@ -1575,7 +1603,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         applyCam();
       };
       WALK.info = function () {
-        return { on: WALK.on, fk: WALK.fk, walls: WALK.walls.length, doors: WALK.doors.length, front: WALK.front,
+        return { on: WALK.on, fk: WALK.fk, fov: Math.round(camera.fov), walls: WALK.walls.length, doors: WALK.doors.length, front: WALK.front,
           doorsFront: WALK.doors.filter(d => WALK.front && Math.abs(d.z - WALK.front.pz) < 0.35).map(d => ({ x: d.x, w: d.w })),
           eye: { x: Math.round(camera.position.x * 10) / 10, y: Math.round(camera.position.y * 10) / 10, z: Math.round(camera.position.z * 10) / 10 } };
       };
@@ -3355,6 +3383,15 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#walkBtn{position:fixed;right:10px;top:252px;z-index:93;min-width:52px;min-height:48px;border-radius:14px;border:1.6px solid #C7A252;background:#FFFBF0;color:#5c4a12;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
     '#walkBtn.on{background:#0C3B2E;color:#F7F3EA;border-color:#0C3B2E}' +
     '#walkHint{position:fixed;bottom:238px;inset-inline:0;margin-inline:auto;width:max-content;max-width:94vw;z-index:94;display:none;background:rgba(12,59,46,.92);color:#F7F3EA;border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:700;box-shadow:0 6px 18px rgba(10,40,30,.3)}' +
+    '@keyframes glIn{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}' +
+    '#questCard,#shopSheet,#coordPanel .in,#keyCard,#lockPanel{animation:glIn .18s ease}' +
+    '#questChev{font-size:12px;opacity:.75;margin-inline-start:auto}' +
+    '#questHide{margin-inline-start:6px;min-width:34px;min-height:30px;border:1px solid #cbb26a;border-radius:8px;background:#fff;color:#8e2f26;font-family:inherit;font-weight:800;cursor:pointer}' +
+    '#questChip{position:fixed;top:64px;inset-inline-end:10px;z-index:65;display:none;min-width:52px;min-height:48px;border-radius:14px;border:1.5px solid #C7A252;background:#FFFBF0;font-size:19px;cursor:pointer;box-shadow:0 6px 18px rgba(60,45,10,.28)}' +
+    '#zoomBox{position:fixed;right:10px;bottom:238px;z-index:93;display:none;flex-direction:column;gap:8px}' +
+    '#zoomBox button{width:52px;height:52px;border-radius:50%;border:1.6px solid #C7A252;background:#FFFBF0;font-size:19px;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
+    '#zoomBox button:active{background:#0C3B2E}' +
+    '#drawerClose{position:fixed;top:70px;inset-inline-end:12px;z-index:96;display:none;min-height:46px;padding:8px 16px;border-radius:12px;border:1.5px solid #3dab94;background:#0A162C;color:#F7F3EA;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.4)}' +
     '#coordBtn{display:block;width:100%;margin-top:9px;min-height:46px;border:1.4px solid #0C3B2E;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}' +
     '#coordPanel{position:fixed;inset:0;z-index:210;display:none;align-items:center;justify-content:center;background:rgba(20,30,40,.5)}' +
     '#coordPanel .in{background:#FFFBF0;border:2px solid #0C3B2E;border-radius:18px;width:92vw;max-width:352px;max-height:88vh;overflow-y:auto;box-shadow:0 14px 44px rgba(0,0,0,.35);color:#2b2b26}' +
@@ -3383,7 +3420,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
 
   var card = document.createElement('div');
   card.id = 'questCard';
-  card.innerHTML = '<div id="questHead"><span>🎯 آج کے مشن</span><span id="questLvl">0/5</span></div>' +
+  card.innerHTML = '<div id="questHead"><span>🎯 آج کے مشن</span><span id="questLvl">0/5</span><span id="questChev">▾</span><button id="questHide" type="button" title="مشن کارڈ چھپائیں">✕</button></div>' +
     '<div id="questBody">' +
     MISSIONS.map(function (m) { return '<div class="qm" id="q_' + m.id + '"><span class="box"></span><span class="txt">' + m.txt + '</span></div>'; }).join('') +
     '<div id="questBar"><div id="questFill"></div></div>' +
@@ -3399,7 +3436,36 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   document.getElementById('questHead').addEventListener('click', function () {
     var b = document.getElementById('questBody');
     b.style.display = (b.style.display === 'none') ? '' : 'none';
+    document.getElementById('questChev').textContent = (b.style.display === 'none') ? '▸' : '▾';
   });
+  /* quest card can also be hidden completely; a small 🎯 chip brings it back */
+  var questChip = document.createElement('button');
+  questChip.type = 'button'; questChip.id = 'questChip'; questChip.textContent = '🎯'; questChip.title = 'مشن دکھائیں';
+  document.body.appendChild(questChip);
+  document.getElementById('questHide').addEventListener('click', function (e) {
+    e.stopPropagation(); sndTap();
+    card.style.display = 'none'; questChip.style.display = 'block';
+  });
+  questChip.addEventListener('click', function () {
+    sndTap(); card.style.display = ''; questChip.style.display = 'none';
+  });
+  window.__QUESTUI = { card: card, chip: questChip };
+  /* the Studio menu drawer has no close of its own: a floating chip closes it */
+  var drawerClose = document.createElement('button');
+  drawerClose.type = 'button'; drawerClose.id = 'drawerClose'; drawerClose.textContent = '✕ مینو بند کریں';
+  document.body.appendChild(drawerClose);
+  drawerClose.addEventListener('click', function () {
+    var d = document.getElementById('menuDrawer');
+    if (d) d.classList.remove('open');
+    sndTap();
+  });
+  var menuDrawerEl = document.getElementById('menuDrawer');
+  if (menuDrawerEl && window.MutationObserver) {
+    new MutationObserver(function () {
+      drawerClose.style.display = menuDrawerEl.classList.contains('open') ? 'block' : 'none';
+    }).observe(menuDrawerEl, { attributes: true, attributeFilter: ['class'] });
+  }
+  window.__DRAWERUI = { chip: drawerClose };
 
   /* --- tiny WebAudio feedback (no assets; created lazily on gesture) --- */
   var AC = null;
@@ -3790,13 +3856,20 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   document.body.appendChild(walkBtn);
   var walkHint = document.createElement('div');
   walkHint.id = 'walkHint';
-  walkHint.textContent = '🚶 واک موڈ — WASD: چلیں · گھسیٹ کر دیکھیں · Space: منزل · Esc: واک ختم';
+  walkHint.textContent = '🚶 واک موڈ — WASD: چلیں · گھسیٹ کر دیکھیں · اسکرول یا +/−: زوم · Space: منزل · Esc: واک ختم';
   document.body.appendChild(walkHint);
+  var zoomBox = document.createElement('div');
+  zoomBox.id = 'zoomBox';
+  zoomBox.innerHTML = '<button id="zoomIn" type="button" title="قریب سے دیکھیں">🔍+</button><button id="zoomOut" type="button" title="دور سے دیکھیں">🔍−</button>';
+  document.body.appendChild(zoomBox);
+  document.getElementById('zoomIn').addEventListener('click', function () { if (window.__WALK) { sndTap(); window.__WALK.zoom(-6); } });
+  document.getElementById('zoomOut').addEventListener('click', function () { if (window.__WALK) { sndTap(); window.__WALK.zoom(6); } });
   function walkSync() {
     var on = !!(window.__WALK && window.__WALK.on);
     walkBtn.classList.toggle('on', on);
     walkBtn.textContent = on ? '🚪 واک ختم' : '🚶 اندر چلیں';
     walkHint.style.display = on ? 'block' : 'none';
+    zoomBox.style.display = on ? 'flex' : 'none';
   }
   walkBtn.addEventListener('click', function () {
     var mm = document.getElementById('mModel');
