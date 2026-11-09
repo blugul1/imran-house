@@ -1431,6 +1431,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
           if (KEYS_HELD.KeyD || KEYS_HELD.ArrowRight) s += 1;
           if (KEYS_HELD.KeyA || KEYS_HELD.ArrowLeft) s -= 1;
           if (!f && !s) return;
+          if (window.__WALK && window.__WALK.on) { window.__WALK.move(f, s, dt); return; }
           const dx = camera.position.x - camTg.x, dz = camera.position.z - camTg.z;
           const len = Math.hypot(dx, dz) || 1;
           const fx = -dx / len, fz = -dz / len, rx = -fz, rz = fx;
@@ -1453,6 +1454,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
           document.querySelectorAll('[data-fl]').forEach(function (x) { x.classList.toggle('on', x.dataset.fl === avail[n]); });
           try { applyFloor(); } catch (e) {}
           camTg.y = (BASES[avail[n]] || 0) + 5; applyCam();
+          if (window.__WALK && window.__WALK.on) window.__WALK.retarget(avail[n]);
           return avail[n];
         }
       };
@@ -1461,7 +1463,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         let lastT = 0;
         const kloop = function (t) {
           requestAnimationFrame(kloop);
-          const dt = Math.min(0.05, lastT ? (t - lastT) / 1000 : 0.016); lastT = t;
+          const dt = Math.min(0.1, lastT ? (t - lastT) / 1000 : 0.016); lastT = t;
           const im = window.__KEY_IMPL; if (im) im.step(dt);
           const fl = window.__FLOW_IMPL; if (fl) fl.tick(t / 1000);
         };
@@ -1480,6 +1482,112 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         cam: function () { return { x: Math.round(camTg.x * 10) / 10, y: Math.round(camTg.y * 10) / 10, z: Math.round(camTg.z * 10) / 10 }; },
         floor: function () { return state.floor; }
       };
+      /* ==== GAME: walk mode (slice 1, owner 9 Nov) ====
+         Eye-level walk: in through the front door, then room to room
+         through the REAL door gaps. Collision comes from the PLAN itself:
+         room edges are walls, plan.doors spans are the only passes.
+         Climbing floors stays on Space for this slice (the eye lands at
+         the largest room of the new floor). */
+      const WALK = { on: false, saved: null, walls: [], doors: [], fk: 'ground', front: null };
+      const EYE_H = 5.2;
+      function buildWalkData() {
+        WALK.walls = []; WALK.doors = [];
+        for (const r of plan.rooms) {
+          if (r.fk !== WALK.fk) continue;
+          WALK.walls.push({ ax: 'v', at: r.x, a: r.z, b: r.z + r.d });
+          WALK.walls.push({ ax: 'v', at: r.x + r.w, a: r.z, b: r.z + r.d });
+          WALK.walls.push({ ax: 'h', at: r.z, a: r.x, b: r.x + r.w });
+          WALK.walls.push({ ax: 'h', at: r.z + r.d, a: r.x, b: r.x + r.w });
+        }
+        /* buildWalls cuts EVERY door on every floor (no fk filter there),
+           so the walk layer mirrors it: all doors are passes on all floors. */
+        for (const d of (plan.doors || [])) WALK.doors.push(d);
+      }
+      function doorPass(wall, along) {
+        for (const d of WALK.doors) {
+          if (wall.ax === 'h' && (d.wall === 'N' || d.wall === 'S') && Math.abs(d.z - wall.at) < 0.35 && Math.abs(along - d.x) < d.w / 2 + 0.15) return true;
+          if (wall.ax === 'v' && (d.wall === 'E' || d.wall === 'W') && Math.abs(d.x - wall.at) < 0.35 && Math.abs(along - d.z) < d.w / 2 + 0.15) return true;
+        }
+        return false;
+      }
+      function slideAxis(axis, o, n, fixed) {
+        const R = 0.8;
+        for (const w of WALK.walls) {
+          if (axis === 'x' && w.ax !== 'v') continue;
+          if (axis === 'z' && w.ax !== 'h') continue;
+          if (fixed < w.a - 0.01 || fixed > w.b + 0.01) continue;
+          if (o <= w.at - R && n > w.at - R) { if (!doorPass(w, fixed)) n = w.at - R; }
+          else if (o >= w.at + R && n < w.at + R) { if (!doorPass(w, fixed)) n = w.at + R; }
+        }
+        return n;
+      }
+      WALK.move = function (f, s, dt) {
+        orb.sph.radius = 2.5;
+        const off = new THREE.Vector3().setFromSpherical(orb.sph);
+        const eye = camera.position;
+        const fwd = new THREE.Vector3(camTg.x - eye.x, 0, camTg.z - eye.z);
+        if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1); fwd.normalize();
+        const rgt = new THREE.Vector3(-fwd.z, 0, fwd.x);
+        const sp = 8.5 * dt;
+        const pw = plan.meta.plotW, pd = plan.meta.depth;
+        const ox = eye.x + pw / 2, oz = eye.z + pd / 2;
+        let px = eye.x + (fwd.x * f + rgt.x * s) * sp + pw / 2;
+        let pz = eye.z + (fwd.z * f + rgt.z * s) * sp + pd / 2;
+        px = slideAxis('x', ox, px, oz);
+        pz = slideAxis('z', oz, pz, px);
+        let nx = Math.max(-pw / 2 - 30, Math.min(pw / 2 + 30, px - pw / 2));
+        let nz = Math.max(-pd / 2 - 30, Math.min(pd / 2 + 30, pz - pd / 2));
+        camTg.set(nx - off.x, (BASES[WALK.fk] || 0) + EYE_H - off.y, nz - off.z);
+        applyCam();
+      };
+      WALK.enter = function () {
+        if (WALK.on) return;
+        WALK.saved = { r: orb.sph.radius, p: orb.sph.phi, t: orb.sph.theta, tg: camTg.clone() };
+        WALK.on = true;
+        WALK.fk = (state.floor && state.floor !== 'all') ? state.floor : 'ground';
+        buildWalkData();
+        let start = null;
+        if (WALK.fk === 'ground') {
+          let frontZ = Infinity;
+          for (const r of plan.rooms) if (r.fk === 'ground') frontZ = Math.min(frontZ, r.z);
+          let ent = null;
+          for (const d of WALK.doors) { if (Math.abs(d.z - frontZ) < 0.35) { ent = d; break; } }
+          if (ent) { start = { x: ent.x, z: frontZ - 9 }; WALK.front = { x: ent.x - plan.meta.plotW / 2, z: frontZ - plan.meta.depth / 2, pz: frontZ }; }
+        }
+        if (!start) { const rm = plan.rooms.find(r => r.fk === WALK.fk && (r.type === 'hall' || r.type === 'circ')) || plan.rooms.find(r => r.fk === WALK.fk); if (rm) start = { x: rm.x + rm.w / 2, z: rm.z + rm.d / 2 }; }
+        orb.sph.theta = Math.PI; orb.sph.phi = 1.32; orb.sph.radius = 2.5;
+        if (start) { const off = new THREE.Vector3().setFromSpherical(orb.sph); camTg.set(start.x - plan.meta.plotW / 2 - off.x, (BASES[WALK.fk] || 0) + EYE_H - off.y, start.z - plan.meta.depth / 2 - off.z); }
+        applyCam();
+        if (window.__WALKUI) window.__WALKUI.sync();
+      };
+      WALK.exit = function () {
+        if (!WALK.on) return;
+        WALK.on = false;
+        if (WALK.saved) { orb.sph.radius = WALK.saved.r; orb.sph.phi = WALK.saved.p; orb.sph.theta = WALK.saved.t; camTg.copy(WALK.saved.tg); }
+        applyCam();
+        if (window.__WALKUI) window.__WALKUI.sync();
+      };
+      WALK.toggle = function () { if (WALK.on) WALK.exit(); else WALK.enter(); };
+      WALK.retarget = function (fk) {
+        WALK.fk = fk; buildWalkData();
+        const rm = plan.rooms.filter(r => r.fk === fk).sort((a, b) => (b.w * b.d) - (a.w * a.d))[0];
+        if (rm) { const off = new THREE.Vector3().setFromSpherical(orb.sph); camTg.set(rm.x + rm.w / 2 - plan.meta.plotW / 2 - off.x, (BASES[fk] || 0) + EYE_H - off.y, rm.z + rm.d / 2 - plan.meta.depth / 2 - off.z); }
+        applyCam();
+      };
+      WALK.info = function () {
+        return { on: WALK.on, fk: WALK.fk, walls: WALK.walls.length, doors: WALK.doors.length, front: WALK.front,
+          doorsFront: WALK.doors.filter(d => WALK.front && Math.abs(d.z - WALK.front.pz) < 0.35).map(d => ({ x: d.x, w: d.w })),
+          eye: { x: Math.round(camera.position.x * 10) / 10, y: Math.round(camera.position.y * 10) / 10, z: Math.round(camera.position.z * 10) / 10 } };
+      };
+      WALK.blockedAt = function (wx, wz) {
+        const pw = plan.meta.plotW, pd = plan.meta.depth;
+        const ox = camera.position.x + pw / 2, oz = camera.position.z + pd / 2;
+        const px = wx + pw / 2, pz = wz + pd / 2;
+        const sx = slideAxis('x', ox, px, oz);
+        const sz = slideAxis('z', oz, pz, sx);
+        return Math.abs(sx - px) > 0.01 || Math.abs(sz - pz) > 0.01;
+      };
+      window.__WALK = WALK;
     } catch (e) {}
     summary(spec);
     buildRoomList(plan);
@@ -3244,6 +3352,9 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#keyCard kbd{background:#0C3B2E;color:#F7F3EA;border-radius:6px;padding:2px 9px;font-family:inherit;font-weight:800;font-size:13.5px;white-space:nowrap}' +
     '#keyCard .kNote{font-size:12.5px;color:#6b6a5e;margin-top:8px}' +
     '#keyClose{margin-top:10px;width:100%;min-height:48px;border:0;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer}' +
+    '#walkBtn{position:fixed;right:10px;top:252px;z-index:93;min-width:52px;min-height:48px;border-radius:14px;border:1.6px solid #C7A252;background:#FFFBF0;color:#5c4a12;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
+    '#walkBtn.on{background:#0C3B2E;color:#F7F3EA;border-color:#0C3B2E}' +
+    '#walkHint{position:fixed;bottom:238px;inset-inline:0;margin-inline:auto;width:max-content;max-width:94vw;z-index:94;display:none;background:rgba(12,59,46,.92);color:#F7F3EA;border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:700;box-shadow:0 6px 18px rgba(10,40,30,.3)}' +
     '#coordBtn{display:block;width:100%;margin-top:9px;min-height:46px;border:1.4px solid #0C3B2E;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer}' +
     '#coordPanel{position:fixed;inset:0;z-index:210;display:none;align-items:center;justify-content:center;background:rgba(20,30,40,.5)}' +
     '#coordPanel .in{background:#FFFBF0;border:2px solid #0C3B2E;border-radius:18px;width:92vw;max-width:352px;max-height:88vh;overflow-y:auto;box-shadow:0 14px 44px rgba(0,0,0,.35);color:#2b2b26}' +
@@ -3654,12 +3765,14 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       e.preventDefault();
       if (window.__PLACE && window.__PLACE.active()) { if (window.__PLACE.commit()) { sndDone(); if (window.__PLACEUI) window.__PLACEUI.sync(); } }
       else {
+        if (window.__WALK && window.__WALK.on) return;
         var btns = Array.prototype.filter.call(document.querySelectorAll('.trayBtn'), function (b) { return b.id !== 'shopTab'; });
         var act = window.__TRAY ? window.__TRAY.active() : -1;
         var nx = btns[act + 1]; if (nx) nx.click();
       }
     } else if (e.code === 'Escape') {
       if (window.__PLACE && window.__PLACE.active()) { window.__PLACE.cancel(); if (window.__PLACEUI) window.__PLACEUI.sync(); }
+      else if (window.__WALK && window.__WALK.on) { window.__WALK.exit(); }
       else if (window.__LOCK && window.__LOCK.panelOpen()) {
         var lb = Array.prototype.filter.call(document.querySelectorAll('#lockPanel button'), function (b) { return b.textContent.indexOf('واپس') >= 0; })[0];
         if (lb) lb.click();
@@ -3670,6 +3783,28 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }
   });
   window.__KEYUI = { chip: keyChip, card: keyCard };
+
+  /* ---- walk mode (slice 1): one button in, one button out ---- */
+  var walkBtn = document.createElement('button');
+  walkBtn.type = 'button'; walkBtn.id = 'walkBtn'; walkBtn.textContent = '🚶 اندر چلیں';
+  document.body.appendChild(walkBtn);
+  var walkHint = document.createElement('div');
+  walkHint.id = 'walkHint';
+  walkHint.textContent = '🚶 واک موڈ — WASD: چلیں · گھسیٹ کر دیکھیں · Space: منزل · Esc: واک ختم';
+  document.body.appendChild(walkHint);
+  function walkSync() {
+    var on = !!(window.__WALK && window.__WALK.on);
+    walkBtn.classList.toggle('on', on);
+    walkBtn.textContent = on ? '🚪 واک ختم' : '🚶 اندر چلیں';
+    walkHint.style.display = on ? 'block' : 'none';
+  }
+  walkBtn.addEventListener('click', function () {
+    var mm = document.getElementById('mModel');
+    if (mm && !mm.classList.contains('on')) mm.click();
+    if (window.__WALK) { sndTap(); window.__WALK.toggle(); }
+    walkSync();
+  });
+  window.__WALKUI = { sync: walkSync, btn: walkBtn };
   var shopTab = document.createElement('button');
   shopTab.type = 'button'; shopTab.className = 'trayBtn'; shopTab.id = 'shopTab';
   shopTab.innerHTML = '<span class="ic">🛍️</span>دکان';
