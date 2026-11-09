@@ -1465,6 +1465,11 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
           requestAnimationFrame(kloop);
           const dt = Math.min(0.1, lastT ? (t - lastT) / 1000 : 0.016); lastT = t;
           const im = window.__KEY_IMPL; if (im) im.step(dt);
+          const wz = window.__WALK;
+          if (wz && wz.on && Math.abs(camera.fov - (wz.fov || 46)) > 0.12) {
+            camera.fov += ((wz.fov || 46) - camera.fov) * Math.min(1, dt * 9);
+            camera.updateProjectionMatrix();
+          }
           const fl = window.__FLOW_IMPL; if (fl) fl.tick(t / 1000);
         };
         requestAnimationFrame(kloop);
@@ -1562,9 +1567,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
         applyCam();
       };
       WALK.zoom = function (d) {
+        /* sets the TARGET fov (30–58, a comfortable range); the key loop
+           eases the camera toward it, so zoom glides instead of jumping */
         if (!WALK.on) return;
-        WALK.fov = Math.max(24, Math.min(60, (WALK.fov || 46) + d));
-        camera.fov = WALK.fov; camera.updateProjectionMatrix();
+        WALK.fov = Math.max(30, Math.min(58, (WALK.fov || 46) + d));
       };
       WALK.enter = function () {
         if (WALK.on) return;
@@ -3382,7 +3388,10 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '#keyClose{margin-top:10px;width:100%;min-height:48px;border:0;border-radius:10px;background:#0C3B2E;color:#F7F3EA;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer}' +
     '#walkBtn{position:fixed;right:10px;top:252px;z-index:93;min-width:52px;min-height:48px;border-radius:14px;border:1.6px solid #C7A252;background:#FFFBF0;color:#5c4a12;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(60,45,10,.22)}' +
     '#walkBtn.on{background:#0C3B2E;color:#F7F3EA;border-color:#0C3B2E}' +
-    '#walkHint{position:fixed;bottom:238px;inset-inline:0;margin-inline:auto;width:max-content;max-width:94vw;z-index:94;display:none;background:rgba(12,59,46,.92);color:#F7F3EA;border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:700;box-shadow:0 6px 18px rgba(10,40,30,.3)}' +
+    '#walkHint{position:fixed;bottom:238px;inset-inline:0;margin-inline:auto;width:max-content;max-width:94vw;z-index:94;display:none;background:rgba(12,59,46,.92);color:#F7F3EA;border-radius:999px;padding:8px 16px;font-size:13.5px;font-weight:700;box-shadow:0 6px 18px rgba(10,40,30,.3);transition:opacity .4s}' +
+    '#questCard button,#shopSheet button,.trayBtn,#todBar button,#placeBar button,#coordPanel button,#keyCard button,#lockPanel button,#walkBtn,#keyChip,#zoomBox button,#drawerClose,#questChip{transition:transform .1s ease}' +
+    '#questCard button:active,#shopSheet button:active,.trayBtn:active,#todBar button:active,#placeBar button:active,#coordPanel button:active,#keyCard button:active,#lockPanel button:active,#walkBtn:active,#keyChip:active,#zoomBox button:active,#drawerClose:active,#questChip:active{transform:scale(.94)}' +
+    '@media (prefers-reduced-motion: reduce){#questCard,#shopSheet,#coordPanel .in,#keyCard,#lockPanel{animation:none}}' +
     '@keyframes glIn{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}' +
     '#questCard,#shopSheet,#coordPanel .in,#keyCard,#lockPanel{animation:glIn .18s ease}' +
     '#questChev{font-size:12px;opacity:.75;margin-inline-start:auto}' +
@@ -3483,6 +3492,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   function sndTap() { beep(620, 420, 0.05, 'triangle', 0.07); }
   function sndDone() { beep(190, 70, 0.11, 'sine', 0.15); }
   function sndWin() { sndDone(); setTimeout(function () { beep(520, 780, 0.15, 'triangle', 0.09); }, 140); }
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
 
   function complete(id) {
     if (done[id]) return;
@@ -3741,6 +3751,18 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     }).join('') + '</div><div id="placedBox" style="display:none"><div class="plT">🧺 میرے لگائے ہوئے</div><div id="placedList"></div></div>';
   document.body.appendChild(shopSheet);
   document.getElementById('shopClose').addEventListener('click', function () { shopSheet.style.display = 'none'; });
+  /* swipe the sheet's header downward to close it too (games' sheet rule:
+     a visible ✕ stays primary; the gesture is only a second exit) */
+  (function () {
+    var head = document.getElementById('shopHead'), y0 = null;
+    head.addEventListener('pointerdown', function (e) { y0 = e.clientY; });
+    head.addEventListener('pointermove', function (e) {
+      if (y0 === null) return;
+      if (e.clientY - y0 > 70) { y0 = null; shopSheet.style.display = 'none'; sndTap(); }
+    });
+    head.addEventListener('pointerup', function () { y0 = null; });
+    head.addEventListener('pointercancel', function () { y0 = null; });
+  })();
   shopSheet.querySelectorAll('.shopShow').forEach(function (b) {
     b.addEventListener('click', function () {
       sndTap();
@@ -3782,7 +3804,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     else { s.textContent = st.reason ? '✕ ' + st.reason : 'نقشے پر انگلی گھمائیں — سایہ دار نمونہ ساتھ چلے گا'; s.className = 'pbS bad'; }
     document.getElementById('pbOk').disabled = !st.ok;
   }
-  document.getElementById('pbOk').addEventListener('click', function () { if (window.__PLACE && window.__PLACE.commit()) { sndDone(); pbSync(); } });
+  document.getElementById('pbOk').addEventListener('click', function () { if (window.__PLACE && window.__PLACE.commit()) { sndDone(); buzz(25); pbSync(); } });
   document.getElementById('pbRot').addEventListener('click', function () { sndTap(); if (window.__PLACE) { window.__PLACE.rotate(); pbSync(); } });
   document.getElementById('pbCancel').addEventListener('click', function () { sndTap(); if (window.__PLACE) window.__PLACE.cancel(); pbSync(); });
   shopSheet.querySelectorAll('.shopPlace').forEach(function (b) {
@@ -3811,6 +3833,7 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
     '<div class="kRow"><span><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>آگے، بائیں، پیچھے، دائیں — نظارہ گھمائیں/چلیں (تیر والی کیز بھی)</span></div>' +
     '<div class="kRow"><kbd>Space</kbd><span>سیڑھیاں — اوپر والی منزل (Shift + Space = نیچے والی منزل)</span></div>' +
     '<div class="kRow"><kbd>E</kbd><span>انوینٹری — دکان کھولیں/بند کریں</span></div>' +
+    '<div class="kRow"><kbd>+</kbd> <kbd>−</kbd><span>واک میں زوم — قریب / دور</span></div>' +
     '<div class="kRow"><kbd>Enter</kbd><span>چالو — چیز لگائیں، یا اگلا مرحلہ</span></div>' +
     '<div class="kRow"><kbd>R</kbd><span>لگاتے ہوئے چیز گھمائیں</span></div>' +
     '<div class="kRow"><kbd>Esc</kbd><span>واپس — جو کھلا ہے بند کریں</span></div>' +
@@ -3827,9 +3850,13 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       if (window.__SHOPUI) window.__SHOPUI.tab.click();
     } else if (e.code === 'KeyR') {
       if (window.__PLACE && window.__PLACE.active()) { window.__PLACE.rotate(); if (window.__PLACEUI) window.__PLACEUI.sync(); }
+    } else if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+      if (window.__WALK && window.__WALK.on) window.__WALK.zoom(-5);
+    } else if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+      if (window.__WALK && window.__WALK.on) window.__WALK.zoom(5);
     } else if (e.code === 'Enter') {
       e.preventDefault();
-      if (window.__PLACE && window.__PLACE.active()) { if (window.__PLACE.commit()) { sndDone(); if (window.__PLACEUI) window.__PLACEUI.sync(); } }
+      if (window.__PLACE && window.__PLACE.active()) { if (window.__PLACE.commit()) { sndDone(); buzz(25); if (window.__PLACEUI) window.__PLACEUI.sync(); } }
       else {
         if (window.__WALK && window.__WALK.on) return;
         var btns = Array.prototype.filter.call(document.querySelectorAll('.trayBtn'), function (b) { return b.id !== 'shopTab'; });
@@ -3862,13 +3889,36 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
   zoomBox.id = 'zoomBox';
   zoomBox.innerHTML = '<button id="zoomIn" type="button" title="قریب سے دیکھیں">🔍+</button><button id="zoomOut" type="button" title="دور سے دیکھیں">🔍−</button>';
   document.body.appendChild(zoomBox);
-  document.getElementById('zoomIn').addEventListener('click', function () { if (window.__WALK) { sndTap(); window.__WALK.zoom(-6); } });
-  document.getElementById('zoomOut').addEventListener('click', function () { if (window.__WALK) { sndTap(); window.__WALK.zoom(6); } });
+  function holdZoom(id, d) {
+    var b = document.getElementById(id), iv = null, to = null;
+    function step() { if (window.__WALK) window.__WALK.zoom(d); }
+    function stop() { if (to) clearTimeout(to); if (iv) clearInterval(iv); to = iv = null; }
+    b.addEventListener('pointerdown', function (e) { e.preventDefault(); sndTap(); step(); stop(); to = setTimeout(function () { iv = setInterval(step, 110); }, 350); });
+    b.addEventListener('pointerup', stop);
+    b.addEventListener('pointerleave', stop);
+    b.addEventListener('pointercancel', stop);
+  }
+  holdZoom('zoomIn', -6);
+  holdZoom('zoomOut', 6);
+  var hintTimer = null, hintFade = null;
   function walkSync() {
     var on = !!(window.__WALK && window.__WALK.on);
     walkBtn.classList.toggle('on', on);
     walkBtn.textContent = on ? '🚪 واک ختم' : '🚶 اندر چلیں';
-    walkHint.style.display = on ? 'block' : 'none';
+    if (hintTimer) clearTimeout(hintTimer);
+    if (hintFade) clearTimeout(hintFade);
+    if (on) {
+      walkHint.style.display = 'block';
+      walkHint.style.opacity = '1';
+      /* hints fade away by themselves (games' rule); controls never do */
+      hintTimer = setTimeout(function () {
+        walkHint.style.opacity = '0';
+        hintFade = setTimeout(function () { if (window.__WALK && window.__WALK.on) walkHint.style.display = 'none'; }, 450);
+      }, 6500);
+    } else {
+      walkHint.style.display = 'none';
+      walkHint.style.opacity = '1';
+    }
     zoomBox.style.display = on ? 'flex' : 'none';
   }
   walkBtn.addEventListener('click', function () {
