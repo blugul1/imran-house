@@ -1623,6 +1623,46 @@ if(typeof module !== 'undefined') module.exports = { generatePlan, generateFromR
       };
       window.__WALK = WALK;
 try {
+      // ===== DOORWAY GLIDE wave α (11 Nov 2026): «اندر چلیں» becomes a cinematic glide — orbit sweeps to the street, then the camera steps through the front door into the house (reel R5 grammar). Doors open as the camera nears (Living wave proximity). Any touch/key lands the user inside instantly; reduced-motion keeps the plain instant entry. =====
+      const ALPHA = { glide: null, prev: 0 };
+      const aEnter0 = WALK.enter, aExit0 = WALK.exit;
+      function aApplyA(s){ camTg.set(s.x, s.y, s.z); orb.sph.radius = s.r; orb.sph.phi = s.p; orb.sph.theta = s.t; applyCam(); }
+      function aLerpA(a, b, k){ return a + (b - a) * k; }
+      function aMixA(A, B, k){ let dt = B.t - A.t; while (dt > Math.PI) dt -= Math.PI * 2; while (dt < -Math.PI) dt += Math.PI * 2; return { x: aLerpA(A.x, B.x, k), y: aLerpA(A.y, B.y, k), z: aLerpA(A.z, B.z, k), r: aLerpA(A.r, B.r, k), p: aLerpA(A.p, B.p, k), t: A.t + dt * k }; }
+      function aSmoothA(k){ return k * k * (3 - 2 * k); }
+      function aEndA(){ const F = WALK.front; const off = new THREE.Vector3().setFromSpherical(new THREE.Spherical(2.5, 1.32, Math.PI)); return { x: F.x - off.x, y: (BASES[WALK.fk] || 0) + 5.2 - off.y, z: F.z + 7.5 - off.z, r: 2.5, p: 1.32, t: Math.PI }; }
+      function aFinishA(){ if (!ALPHA.glide) return; aApplyA(ALPHA.glide.end); ALPHA.glide = null; }
+      WALK.enter = function (){
+        aEnter0();
+        if (window.__REDUCED || !WALK.front || !WALK.saved) return;
+        const F = WALK.front;
+        const from = { x: WALK.saved.tg.x, y: WALK.saved.tg.y, z: WALK.saved.tg.z, r: WALK.saved.r, p: WALK.saved.p, t: WALK.saved.t };
+        const mid = { x: F.x, y: 3.2, z: F.z - 10.5, r: 13.5, p: 1.24, t: Math.PI - 0.32 };
+        ALPHA.glide = { t: 0, from, mid, end: aEndA() };
+        ALPHA.prev = performance.now();
+        aApplyA(from);
+        requestAnimationFrame(aLoopA);
+      };
+      WALK.exit = function (){ ALPHA.glide = null; aExit0(); };
+      function aLoopA(now){
+        const G = ALPHA.glide; if (!G) return;
+        const dt = Math.min(0.1, (now - ALPHA.prev) / 1000); ALPHA.prev = now; G.t += dt;
+        const A = 0.85, B = 1.25;
+        if (G.t < A) aApplyA(aMixA(G.from, G.mid, aSmoothA(G.t / A)));
+        else if (G.t < A + B) aApplyA(aMixA(G.mid, G.end, aSmoothA((G.t - A) / B)));
+        else { aApplyA(G.end); ALPHA.glide = null; return; }
+        requestAnimationFrame(aLoopA);
+      }
+      if (!window.__ALPHA_WIRED){
+        window.__ALPHA_WIRED = true;
+        const cancelA = () => { if (window.__ALPHA_IMPL) window.__ALPHA_IMPL.finish(); };
+        window.addEventListener('pointerdown', cancelA, true);
+        window.addEventListener('keydown', cancelA, true);
+      }
+      window.__ALPHA_IMPL = { finish: aFinishA };
+      window.__ALPHA = { active: () => !!ALPHA.glide, finish: aFinishA };
+} catch (e) { window.__ALPHA_ERR = String((e && e.stack) || e); }
+try {
       // ===== LIVING HOUSE wave (10 Nov 2026): doors swing, fixtures live in every room, guided living tour =====
       const LIVE = { fix: [], doors: [], hit: [], tour: null, saved: null, doorsAll: false };
       const LRED = !!window.__REDUCED;
